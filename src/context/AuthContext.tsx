@@ -7,7 +7,8 @@ import {
   onAuthStateChanged,
   User as FirebaseUser 
 } from 'firebase/auth';
-import { auth } from '../firebase/config';
+import { auth, db } from '../firebase/config';
+import { doc, getDoc, setDoc, getDocs, collection } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -28,22 +29,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Synchronize user profile with backend, with resilient offline/Vercel fallback
+  // Synchronize user profile with Firestore and backend
   const syncWithBackend = async (uid: string, email: string, name?: string) => {
     const isSystemAdmin = email.toLowerCase() === 'altamedia51@gmail.com';
     
-    // Immediate optimistic local profile
+    // Compute real KIE credits if admin
+    let initialCredits = isSystemAdmin ? 0 : 50;
+    if (isSystemAdmin) {
+      try {
+        const kieSnap = await getDocs(collection(db, 'kie_accounts'));
+        initialCredits = kieSnap.docs
+          .filter(d => d.data().status === 'ACTIVE')
+          .reduce((sum, d) => sum + (d.data().credits || 0), 0);
+      } catch (e) {}
+    }
+
     const localProfile: User = {
       id: uid || (isSystemAdmin ? 'admin_altamedia' : `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`),
       name: name || (isSystemAdmin ? 'System Admin (altamedia51)' : email.split('@')[0]),
       email: email.toLowerCase(),
       role: isSystemAdmin ? 'admin' : 'user',
       status: 'active',
-      credits: isSystemAdmin ? 0 : 50,
+      credits: initialCredits,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
+    // 1. Write directly to Google Cloud Firestore database
+    try {
+      await setDoc(doc(db, 'users', localProfile.id), localProfile, { merge: true });
+    } catch (fsErr: any) {
+      console.warn('[Auth] Firestore user write note:', fsErr.message);
+    }
+
+    // 2. Also notify backend
     try {
       const res = await fetch('/api/auth/sync', {
         method: 'POST',
@@ -60,16 +79,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem('sonichub_user', JSON.stringify(data.user));
             return data.user;
           }
-        } catch (jsonErr) {
-          // If response is HTML or non-JSON (e.g. Vercel SPA rewrite fallback)
-          console.warn('[Auth] Non-JSON backend response, using resilient profile');
-        }
+        } catch (jsonErr) {}
       }
-    } catch (e) {
-      console.warn('[Auth] Backend sync note:', (e as Error).message);
-    }
+    } catch (e) {}
 
-    // Apply resilient profile
+    // Apply profile
     setUser(localProfile);
     localStorage.setItem('sonichub_user', JSON.stringify(localProfile));
     return localProfile;
@@ -77,6 +91,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async () => {
     if (!user) return;
+    const isSystemAdmin = user.role === 'admin' || user.email.toLowerCase() === 'altamedia51@gmail.com';
+
+    // If admin, compute live KIE total from Firestore
+    if (isSystemAdmin) {
+      try {
+        const kieSnap = await getDocs(collection(db, 'kie_accounts'));
+        const total = kieSnap.docs
+          .filter(d => d.data().status === 'ACTIVE')
+          .reduce((sum, d) => sum + (d.data().credits || 0), 0);
+        
+        setUser(prev => {
+          if (!prev) return null;
+          const updated = { ...prev, credits: total };
+          localStorage.setItem('sonichub_user', JSON.stringify(updated));
+          return updated;
+        });
+        return;
+      } catch (e) {}
+    }
+
+    // Direct Firestore user document check
+    try {
+      const snap = await getDoc(doc(db, 'users', user.id));
+      if (snap.exists()) {
+        const updated = snap.data() as User;
+        setUser(updated);
+        localStorage.setItem('sonichub_user', JSON.stringify(updated));
+        return;
+      }
+    } catch (e) {}
+
+    // Backend endpoint fallback
     try {
       const res = await fetch('/api/auth/me', {
         headers: {
@@ -92,9 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem('sonichub_user', JSON.stringify(data.user));
         }
       }
-    } catch (e) {
-      console.warn('Failed to refresh user:', e);
-    }
+    } catch (e) {}
   };
 
   useEffect(() => {
