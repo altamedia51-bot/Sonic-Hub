@@ -25,10 +25,27 @@ import {
   collection, 
   doc, 
   setDoc, 
+  getDoc,
   getDocs, 
   deleteDoc, 
   updateDoc 
 } from 'firebase/firestore';
+
+const defaultPlatformSettings: AppSettings = {
+  id: 'global',
+  generationEnabled: true,
+  registrationEnabled: true,
+  maintenanceMode: false,
+  defaultModel: 'V6',
+  enabledModels: ['V6', 'V5', 'V4', 'V3_5'],
+  defaultUserCredit: 100,
+  maxConcurrentJobsPerUser: 2,
+  maxDailyJobs: 50,
+  maxRetryCount: 2,
+  assetPersistence: true,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
 
 export const AdminPage: React.FC = () => {
   const { user, isAdmin, refreshUser } = useAuth();
@@ -68,7 +85,7 @@ export const AdminPage: React.FC = () => {
   const [logsList, setLogsList] = useState<SystemLog[]>([]);
 
   // Settings
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [appSettings, setAppSettings] = useState<AppSettings>(defaultPlatformSettings);
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -172,11 +189,26 @@ export const AdminPage: React.FC = () => {
         });
       }
 
-      // 5. Settings
-      const setRes = await safeFetchJson('/api/admin/settings', { headers: authHeaders });
-      if (setRes.data?.success && setRes.data.settings) {
-        setAppSettings(setRes.data.settings);
+      // 5. Settings: Load directly from Google Cloud Firestore first
+      let resolvedSettings: AppSettings = { ...defaultPlatformSettings };
+      try {
+        const snap = await getDoc(doc(db, 'app_settings', 'global'));
+        if (snap.exists()) {
+          resolvedSettings = { ...resolvedSettings, ...(snap.data() as any) };
+        }
+      } catch (fsErr: any) {
+        console.warn('[Admin] Firestore settings note:', fsErr.message);
       }
+
+      // Also attempt backend synchronization
+      try {
+        const setRes = await safeFetchJson('/api/admin/settings', { headers: authHeaders });
+        if (setRes.data?.success && setRes.data.settings) {
+          resolvedSettings = { ...resolvedSettings, ...setRes.data.settings };
+        }
+      } catch (e) {}
+
+      setAppSettings(resolvedSettings);
 
     } catch (e: any) {
       console.warn('Admin load note:', e.message);
@@ -1210,7 +1242,7 @@ export const AdminPage: React.FC = () => {
       )}
 
       {/* --- SUBTAB: SETTINGS --- */}
-      {subTab === 'settings' && appSettings && (
+      {subTab === 'settings' && (
         <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-md space-y-6 max-w-2xl">
           <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
             Platform Operational Settings
