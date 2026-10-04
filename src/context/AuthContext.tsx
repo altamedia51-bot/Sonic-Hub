@@ -32,26 +32,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Synchronize user profile with Firestore and backend
   const syncWithBackend = async (uid: string, email: string, name?: string) => {
     const isSystemAdmin = email.toLowerCase() === 'altamedia51@gmail.com';
+    const profileId = uid || (isSystemAdmin ? 'admin_altamedia' : `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`);
     
-    // Compute real KIE credits if admin
-    let initialCredits = isSystemAdmin ? 0 : 50;
+    // Check if user already exists in Firestore so we don't overwrite existing credits
+    let existingProfile: User | null = null;
+    try {
+      const snap = await getDoc(doc(db, 'users', profileId));
+      if (snap.exists()) {
+        existingProfile = snap.data() as User;
+      }
+    } catch (e) {}
+
+    // Determine initial credits
+    let assignedCredits: number;
     if (isSystemAdmin) {
+      let totalKie = 0;
       try {
         const kieSnap = await getDocs(collection(db, 'kie_accounts'));
-        initialCredits = kieSnap.docs
+        totalKie = kieSnap.docs
           .filter(d => d.data().status === 'ACTIVE')
           .reduce((sum, d) => sum + (d.data().credits || 0), 0);
       } catch (e) {}
+      assignedCredits = totalKie;
+    } else if (existingProfile && typeof existingProfile.credits === 'number') {
+      assignedCredits = existingProfile.credits;
+    } else {
+      // New user registering: get configured welcome credits from Firestore app_settings
+      let welcomeCredits = 100;
+      try {
+        const setSnap = await getDoc(doc(db, 'app_settings', 'global'));
+        if (setSnap.exists() && typeof setSnap.data()?.defaultUserCredit === 'number') {
+          welcomeCredits = setSnap.data().defaultUserCredit;
+        }
+      } catch (e) {}
+      assignedCredits = welcomeCredits;
     }
 
     const localProfile: User = {
-      id: uid || (isSystemAdmin ? 'admin_altamedia' : `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`),
-      name: name || (isSystemAdmin ? 'System Admin (altamedia51)' : email.split('@')[0]),
+      id: profileId,
+      name: name || existingProfile?.name || (isSystemAdmin ? 'System Admin (altamedia51)' : email.split('@')[0]),
       email: email.toLowerCase(),
-      role: isSystemAdmin ? 'admin' : 'user',
-      status: 'active',
-      credits: initialCredits,
-      createdAt: new Date().toISOString(),
+      role: isSystemAdmin ? 'admin' : (existingProfile?.role || 'user'),
+      status: existingProfile?.status || 'active',
+      credits: assignedCredits,
+      createdAt: existingProfile?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 

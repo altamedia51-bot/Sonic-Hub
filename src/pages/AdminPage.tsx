@@ -1054,9 +1054,24 @@ export const AdminPage: React.FC = () => {
       {/* --- SUBTAB: USERS --- */}
       {subTab === 'users' && (
         <div className="p-6 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-md space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-            User Accounts & Credit Ledgers
-          </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300">
+                User Accounts & Credit Ledgers
+              </h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Manage registered users, manual credit bonuses, and account access.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => setSubTab('settings')}
+              className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <Coins className="w-3.5 h-3.5" />
+              Setting Bonus Registrasi (+{appSettings?.defaultUserCredit || 100} Credits) →
+            </button>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -1232,16 +1247,50 @@ export const AdminPage: React.FC = () => {
               </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                Default User Initial Credits
-              </label>
-              <input
-                type="number"
-                value={appSettings.defaultUserCredit}
-                onChange={(e) => handleSaveSettings({ defaultUserCredit: parseInt(e.target.value, 10) })}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white"
-              />
+            {/* Dedicated Welcome Bonus Setting */}
+            <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white">Bonus Kredit Registrasi Baru (Welcome Credits)</span>
+                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold border border-amber-500/30">
+                      +{appSettings.defaultUserCredit ?? 100} CREDITS
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-zinc-400 mt-1 block">
+                    Jumlah kredit bonus gratis yang otomatis diberikan kepada setiap user baru saat mendaftar akun di popup registrasi.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={appSettings.defaultUserCredit ?? 100}
+                  onChange={(e) => handleSaveSettings({ defaultUserCredit: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                  className="w-full sm:w-44 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-amber-500"
+                />
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[50, 100, 150, 200, 500].map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => handleSaveSettings({ defaultUserCredit: val })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold transition ${
+                        appSettings.defaultUserCredit === val
+                          ? 'bg-amber-500 text-black font-bold shadow'
+                          : 'bg-zinc-900 border border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                      }`}
+                    >
+                      +{val}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div>

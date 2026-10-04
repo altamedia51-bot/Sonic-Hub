@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Lock, Mail, User, Shield, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../firebase/config';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,6 +17,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [welcomeCredits, setWelcomeCredits] = useState<number>(100);
+
+  useEffect(() => {
+    if (isOpen) {
+      getDoc(doc(db, 'app_settings', 'global')).then((snap) => {
+        if (snap.exists() && typeof snap.data()?.defaultUserCredit === 'number') {
+          setWelcomeCredits(snap.data().defaultUserCredit);
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -125,7 +138,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             disabled={loading}
             className="w-full py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-bold text-xs shadow-md transition disabled:opacity-50"
           >
-            {loading ? 'Authenticating...' : isRegister ? 'Create Account (+100 Credits)' : 'Sign In'}
+            {loading ? 'Authenticating...' : isRegister ? `Create Account (+${welcomeCredits} Credits)` : 'Sign In'}
           </button>
         </form>
 
