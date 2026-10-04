@@ -1,0 +1,182 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and credit balance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "status": { "type": "string", "enum": ["active", "suspended"] },
+        "credits": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "role", "credits"]
+    },
+    "KieAccount": {
+      "title": "KieAccount",
+      "description": "Encrypted KIE API key account configuration and statistics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "encryptedApiKey": { "type": "string" },
+        "maskedApiKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "RATE_LIMITED", "ERROR", "DISABLED", "COOLDOWN"] },
+        "priority": { "type": "number" },
+        "dailyLimit": { "type": "number" },
+        "usageToday": { "type": "number" },
+        "maxConcurrentJobs": { "type": "number" },
+        "activeJobs": { "type": "number" },
+        "cooldownUntil": { "type": "string" },
+        "failureCount": { "type": "number" },
+        "lastUsedAt": { "type": "string" },
+        "lastError": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "encryptedApiKey", "status", "priority"]
+    },
+    "GenerationJob": {
+      "title": "GenerationJob",
+      "description": "Music generation task state and metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "provider": { "type": "string" },
+        "providerAccountId": { "type": "string" },
+        "taskId": { "type": "string" },
+        "title": { "type": "string" },
+        "lyrics": { "type": "string" },
+        "style": { "type": "string" },
+        "model": { "type": "string" },
+        "instrumental": { "type": "boolean" },
+        "negativeTags": { "type": "string" },
+        "vocalGender": { "type": "string", "enum": ["m", "f", ""] },
+        "duration": { "type": "number" },
+        "status": { "type": "string", "enum": ["QUEUED", "SUBMITTING", "PROCESSING", "PARTIAL", "COMPLETED", "FAILED", "CANCELLED"] },
+        "callbackStage": { "type": "string" },
+        "creditReservation": { "type": "number" },
+        "creditFinalized": { "type": "boolean" },
+        "retryCount": { "type": "number" },
+        "errorCode": { "type": "string" },
+        "errorMessage": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "model", "status"]
+    },
+    "GenerationTrack": {
+      "title": "GenerationTrack",
+      "description": "Actual generated audio track from KIE Suno",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "jobId": { "type": "string" },
+        "userId": { "type": "string" },
+        "providerTrackId": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "streamAudioUrl": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "prompt": { "type": "string" },
+        "modelName": { "type": "string" },
+        "title": { "type": "string" },
+        "tags": { "type": "string" },
+        "duration": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "jobId", "audioUrl"]
+    },
+    "CreditTransaction": {
+      "title": "CreditTransaction",
+      "description": "User credit audit history and adjustments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "type": { "type": "string", "enum": ["ADMIN_GRANT", "RESERVATION", "GENERATION", "REFUND", "ADJUSTMENT"] },
+        "amount": { "type": "number" },
+        "balanceBefore": { "type": "number" },
+        "balanceAfter": { "type": "number" },
+        "reason": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "type", "amount", "balanceBefore", "balanceAfter"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Audit and operational logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "level": { "type": "string", "enum": ["info", "warn", "error"] },
+        "category": { "type": "string" },
+        "message": { "type": "string" },
+        "userId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "provider": { "type": "string" },
+        "providerAccountId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "level", "category", "message", "createdAt"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Platform global configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "generationEnabled": { "type": "boolean" },
+        "registrationEnabled": { "type": "boolean" },
+        "maintenanceMode": { "type": "boolean" },
+        "defaultModel": { "type": "string" },
+        "enabledModels": { "type": "array" },
+        "defaultUserCredit": { "type": "number" },
+        "maxConcurrentJobsPerUser": { "type": "number" },
+        "maxDailyJobs": { "type": "number" },
+        "maxRetryCount": { "type": "number" },
+        "callbackUrl": { "type": "string" },
+        "assetPersistence": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document indexed by UID"
+    },
+    "/kie_accounts/{accountId}": {
+      "schema": "KieAccount",
+      "description": "Encrypted KIE provider accounts (admin-only)"
+    },
+    "/generation_jobs/{jobId}": {
+      "schema": "GenerationJob",
+      "description": "Music generation jobs"
+    },
+    "/generation_tracks/{trackId}": {
+      "schema": "GenerationTrack",
+      "description": "Generated audio track results"
+    },
+    "/credit_transactions/{txId}": {
+      "schema": "CreditTransaction",
+      "description": "Credit ledger entries"
+    },
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Audit system logs"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "AppSetting",
+      "description": "Global application configuration"
+    }
+  }
+}

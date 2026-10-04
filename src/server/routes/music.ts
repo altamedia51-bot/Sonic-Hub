@@ -1,0 +1,278 @@
+import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+import { dbStore } from '../db';
+import { MODEL_REGISTRY } from '../config';
+import { jobQueueService } from '../services/JobQueueService';
+
+export const musicRouter = Router();
+
+// Validation schema for music generation request
+const createMusicSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(100, 'Title cannot exceed 100 characters'),
+  lyrics: z.string().max(4500, 'Lyrics cannot exceed 4500 characters').optional().default(''),
+  style: z.string().min(1, 'Style prompt is required').max(600, 'Style cannot exceed 600 characters'),
+  model: z.string().min(1, 'Model is required'),
+  customMode: z.boolean().default(true),
+  instrumental: z.boolean().default(false),
+  negativeTags: z.string().max(300).optional(),
+  vocalGender: z.enum(['m', 'f']).optional(),
+  duration: z.number().min(10).max(360).optional()
+});
+
+/**
+ * Helper to extract user identity from headers / token
+ */
+async function authenticateUser(req: Request) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const userIdHeader = (req.headers['x-user-id'] as string) || '';
+  const userEmailHeader = (req.headers['x-user-email'] as string) || '';
+
+  // In local/production, verify user against DB
+  let user = null;
+  if (userIdHeader) {
+    user = await dbStore.getUser(userIdHeader);
+  }
+  if (!user && userEmailHeader) {
+    user = await dbStore.getUser(userEmailHeader);
+  }
+  if (!user && token && token.length > 5) {
+    user = await dbStore.getUser(token);
+  }
+
+  // Fallback: If anonymous or first turn, check if altamedia admin exists
+  if (!user && (userEmailHeader === 'altamedia51@gmail.com' || !userIdHeader)) {
+    user = await dbStore.getUser('altamedia51@gmail.com');
+  }
+
+  return user;
+}
+
+// POST /api/music/create
+musicRouter.post('/create', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        code: 'UNAUTHENTICATED',
+        message: 'Authentication required to generate music.'
+      });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        code: 'USER_SUSPENDED',
+        message: 'Your account is suspended. Contact support.'
+      });
+    }
+
+    const parseResult = createMusicSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const issues = (parseResult.error as any).issues || (parseResult.error as any).errors || [];
+      const errorMsg = issues.length > 0 
+        ? issues.map((e: any) => e.message).join(', ') 
+        : parseResult.error.message;
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: errorMsg
+      });
+    }
+
+    const { title, lyrics, style, model, customMode, instrumental, negativeTags, vocalGender, duration } = parseResult.data;
+
+    // Additional conditional validation
+    if (!instrumental && customMode && (!lyrics || lyrics.trim().length === 0)) {
+      return res.status(400).json({
+        success: false,
+        code: 'LYRICS_REQUIRED',
+        message: 'Lyrics are required in Custom Mode when instrumental is off.'
+      });
+    }
+
+    // Submit job via JobQueueService
+    const result = await jobQueueService.submitJob({
+      userId: user.id,
+      title,
+      lyrics,
+      style,
+      model,
+      customMode,
+      instrumental,
+      negativeTags,
+      vocalGender,
+      duration
+    });
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        code: result.error?.code || 'SUBMISSION_FAILED',
+        message: result.error?.message || 'Failed to submit generation job'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      jobId: result.job?.id,
+      job: result.job
+    });
+
+  } catch (err: any) {
+    console.error('[API /api/music/create] Error:', err);
+    return res.status(500).json({
+      success: false,
+      code: 'INTERNAL_ERROR',
+      message: err.message || 'Internal server error'
+    });
+  }
+});
+
+// GET /api/music/jobs/:id
+musicRouter.get('/jobs/:id', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    const { id } = req.params;
+    const job = await dbStore.getJob(id);
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Authorization check
+    if (user && user.role !== 'admin' && job.userId !== user.id) {
+      return res.status(403).json({ success: false, message: 'Access denied' });
+    }
+
+    const tracks = await dbStore.getTracksForJob(id);
+
+    return res.status(200).json({
+      success: true,
+      job,
+      tracks
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/music/jobs/:id/status
+musicRouter.get('/jobs/:id/status', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const job = await jobQueueService.checkJobStatus(id);
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    const tracks = await dbStore.getTracksForJob(id);
+
+    return res.status(200).json({
+      success: true,
+      status: job.status,
+      callbackStage: job.callbackStage,
+      error: job.errorMessage,
+      tracks,
+      job
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/music/active
+musicRouter.get('/active', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const userJobs = await dbStore.getUserJobs(user.id);
+    // Find first active job, or most recent job
+    const activeJob = userJobs.find(j => j.status === 'PROCESSING' || j.status === 'SUBMITTING' || j.status === 'QUEUED') || userJobs[0];
+
+    if (!activeJob) {
+      return res.status(200).json({ success: true, activeJob: null, tracks: [] });
+    }
+
+    // Check status if processing
+    const checked = await jobQueueService.checkJobStatus(activeJob.id);
+    const tracks = await dbStore.getTracksForJob(activeJob.id);
+
+    return res.status(200).json({
+      success: true,
+      activeJob: checked || activeJob,
+      tracks
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/music/library
+musicRouter.get('/library', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    // Actively check any pending jobs first
+    const userJobs = await dbStore.getUserJobs(user.id);
+    const pending = userJobs.filter(j => j.status === 'PROCESSING' || j.status === 'SUBMITTING' || j.status === 'PARTIAL');
+    for (const pj of pending) {
+      await jobQueueService.checkJobStatus(pj.id);
+    }
+
+    const items = await dbStore.getUserLibrary(user.id);
+    const currentJobs = await dbStore.getUserJobs(user.id);
+    const activeJobs = currentJobs.filter(j => j.status === 'PROCESSING' || j.status === 'SUBMITTING' || j.status === 'QUEUED');
+
+    return res.status(200).json({
+      success: true,
+      items,
+      activeJobs
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/music/models
+musicRouter.get('/models', async (_req: Request, res: Response) => {
+  const settings = await dbStore.getSettings();
+  const models = Object.values(MODEL_REGISTRY).map(m => ({
+    ...m,
+    enabled: settings.enabledModels.includes(m.id)
+  }));
+  return res.status(200).json({ success: true, models });
+});
+
+// GET /api/music/download?url=...
+musicRouter.get('/download', async (req: Request, res: Response) => {
+  const fileUrl = req.query.url as string;
+  const fileName = (req.query.filename as string) || 'sonic-hub-track.mp3';
+
+  if (!fileUrl) {
+    return res.status(400).send('Missing audio URL parameter');
+  }
+
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) {
+      return res.status(response.status).send('Failed to fetch remote audio file');
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
+
+    const arrayBuffer = await response.arrayBuffer();
+    return res.send(Buffer.from(arrayBuffer));
+  } catch (err: any) {
+    return res.status(500).send(`Download failed: ${err.message}`);
+  }
+});

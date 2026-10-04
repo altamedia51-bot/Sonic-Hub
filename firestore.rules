@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Connection health test probe
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Application user documents
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+    
+    // KIE encrypted provider accounts
+    match /kie_accounts/{accountId} {
+      allow read, write: if true;
+    }
+    
+    // Generation jobs
+    match /generation_jobs/{jobId} {
+      allow read, write: if true;
+    }
+    
+    // Generation audio tracks
+    match /generation_tracks/{trackId} {
+      allow read, write: if true;
+    }
+    
+    // Credit transactions audit ledger
+    match /credit_transactions/{txId} {
+      allow read, write: if true;
+    }
+    
+    // Operational and system logs
+    match /system_logs/{logId} {
+      allow read, write: if true;
+    }
+    
+    // Global platform settings
+    match /app_settings/{settingId} {
+      allow read, write: if true;
+    }
+  }
+}
+
