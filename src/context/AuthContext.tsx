@@ -99,14 +99,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Check local storage first for instant restore
+    const isExplicitLogout = localStorage.getItem('sonichub_logged_out') === 'true';
     const cached = localStorage.getItem('sonichub_user');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         setUser(parsed);
       } catch (e) {}
-    } else {
-      // Default to altamedia admin immediately
+    } else if (!isExplicitLogout) {
+      // Default to altamedia admin for convenient testing
       const defaultAdmin: User = {
         id: 'admin_altamedia',
         name: 'System Admin (altamedia51)',
@@ -124,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen to Firebase auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
       if (fbUser && fbUser.email) {
+        localStorage.removeItem('sonichub_logged_out');
         await syncWithBackend(fbUser.uid, fbUser.email, fbUser.displayName || undefined);
       }
       setLoading(false);
@@ -135,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
+      localStorage.removeItem('sonichub_logged_out');
       try {
         const userCred = await signInWithEmailAndPassword(auth, email, pass);
         await syncWithBackend(userCred.user.uid, userCred.user.email!, userCred.user.displayName || undefined);
@@ -155,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (name: string, email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     try {
       setLoading(true);
+      localStorage.removeItem('sonichub_logged_out');
       try {
         const userCred = await createUserWithEmailAndPassword(auth, email, pass);
         await syncWithBackend(userCred.user.uid, userCred.user.email!, name);
@@ -173,12 +177,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginAsAdmin = async () => {
     setLoading(true);
+    localStorage.removeItem('sonichub_logged_out');
     await syncWithBackend('admin_altamedia', 'altamedia51@gmail.com', 'System Admin (altamedia51)');
     setLoading(false);
   };
 
   const loginAsDemoUser = async () => {
     setLoading(true);
+    localStorage.removeItem('sonichub_logged_out');
     await syncWithBackend('user_musician', 'musician@sonichub.ai', 'Sonic Artist');
     setLoading(false);
   };
@@ -189,6 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {}
     setUser(null);
     localStorage.removeItem('sonichub_user');
+    localStorage.setItem('sonichub_logged_out', 'true');
   };
 
   const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === 'altamedia51@gmail.com';

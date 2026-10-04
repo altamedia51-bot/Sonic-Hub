@@ -210,15 +210,31 @@ class DatabaseStore {
     }
     if (this.firestoreDb) {
       try {
+        // Try direct document ID lookup
         const docRef = doc(this.firestoreDb, 'users', idOrEmail);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           const user = snap.data() as UserDoc;
           this.users.set(user.id, user);
+          if (user.email) this.users.set(user.email.toLowerCase(), user);
+          return user;
+        }
+
+        // Try lookup by email field
+        const q = query(
+          collection(this.firestoreDb, 'users'),
+          where('email', '==', key),
+          limit(1)
+        );
+        const emailSnap = await getDocs(q);
+        if (!emailSnap.empty) {
+          const user = emailSnap.docs[0].data() as UserDoc;
+          this.users.set(user.id, user);
+          if (user.email) this.users.set(user.email.toLowerCase(), user);
           return user;
         }
       } catch (e) {
-        // Fall back to memory
+        console.warn('[DB] Firestore getUser lookup note:', (e as Error).message);
       }
     }
     return null;
@@ -227,7 +243,9 @@ class DatabaseStore {
   async upsertUser(user: UserDoc): Promise<UserDoc> {
     const updated = { ...user, updatedAt: new Date().toISOString() };
     this.users.set(updated.id, updated);
-    this.users.set(updated.email.toLowerCase(), updated);
+    if (updated.email) {
+      this.users.set(updated.email.toLowerCase(), updated);
+    }
 
     if (this.firestoreDb) {
       try {
@@ -240,6 +258,19 @@ class DatabaseStore {
   }
 
   async getAllUsers(): Promise<UserDoc[]> {
+    if (this.firestoreDb) {
+      try {
+        const snap = await getDocs(collection(this.firestoreDb, 'users'));
+        for (const d of snap.docs) {
+          const u = d.data() as UserDoc;
+          this.users.set(u.id, u);
+          if (u.email) this.users.set(u.email.toLowerCase(), u);
+        }
+      } catch (e) {
+        console.warn('[DB] Firestore getAllUsers fetch warning:', (e as Error).message);
+      }
+    }
+
     const unique = new Map<string, UserDoc>();
     for (const u of this.users.values()) {
       unique.set(u.id, u);
@@ -249,11 +280,34 @@ class DatabaseStore {
 
   // --- KIE Accounts ---
   async getKieAccounts(): Promise<KieAccountDoc[]> {
+    if (this.firestoreDb) {
+      try {
+        const snap = await getDocs(collection(this.firestoreDb, 'kie_accounts'));
+        for (const d of snap.docs) {
+          const acc = d.data() as KieAccountDoc;
+          this.kieAccounts.set(acc.id, acc);
+        }
+      } catch (e) {
+        console.warn('[DB] Firestore getKieAccounts warning:', (e as Error).message);
+      }
+    }
     return Array.from(this.kieAccounts.values()).sort((a, b) => b.priority - a.priority);
   }
 
   async getKieAccount(id: string): Promise<KieAccountDoc | null> {
-    return this.kieAccounts.get(id) || null;
+    const mem = this.kieAccounts.get(id);
+    if (mem) return mem;
+    if (this.firestoreDb) {
+      try {
+        const snap = await getDoc(doc(this.firestoreDb, 'kie_accounts', id));
+        if (snap.exists()) {
+          const acc = snap.data() as KieAccountDoc;
+          this.kieAccounts.set(acc.id, acc);
+          return acc;
+        }
+      } catch (e) {}
+    }
+    return null;
   }
 
   async upsertKieAccount(acc: KieAccountDoc): Promise<KieAccountDoc> {
@@ -343,6 +397,20 @@ class DatabaseStore {
   }
 
   async getUserJobs(userId: string): Promise<GenerationJobDoc[]> {
+    if (this.firestoreDb) {
+      try {
+        const q = query(
+          collection(this.firestoreDb, 'generation_jobs'),
+          where('userId', '==', userId)
+        );
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          const j = d.data() as GenerationJobDoc;
+          this.jobs.set(j.id, j);
+        }
+      } catch (e) {}
+    }
+
     const list: GenerationJobDoc[] = [];
     for (const j of this.jobs.values()) {
       if (j.userId === userId) list.push(j);
@@ -351,6 +419,15 @@ class DatabaseStore {
   }
 
   async getAllJobs(): Promise<GenerationJobDoc[]> {
+    if (this.firestoreDb) {
+      try {
+        const snap = await getDocs(collection(this.firestoreDb, 'generation_jobs'));
+        for (const d of snap.docs) {
+          const j = d.data() as GenerationJobDoc;
+          this.jobs.set(j.id, j);
+        }
+      } catch (e) {}
+    }
     return Array.from(this.jobs.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
@@ -366,6 +443,20 @@ class DatabaseStore {
   }
 
   async getTracksForJob(jobId: string): Promise<GenerationTrackDoc[]> {
+    if (this.firestoreDb) {
+      try {
+        const q = query(
+          collection(this.firestoreDb, 'generation_tracks'),
+          where('jobId', '==', jobId)
+        );
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          const t = d.data() as GenerationTrackDoc;
+          this.tracks.set(t.id, t);
+        }
+      } catch (e) {}
+    }
+
     const list: GenerationTrackDoc[] = [];
     for (const t of this.tracks.values()) {
       if (t.jobId === jobId) list.push(t);
@@ -425,6 +516,14 @@ class DatabaseStore {
 
   // --- Settings ---
   async getSettings(): Promise<AppSettingsDoc> {
+    if (this.firestoreDb) {
+      try {
+        const snap = await getDoc(doc(this.firestoreDb, 'app_settings', 'global'));
+        if (snap.exists()) {
+          this.settings = { ...this.settings, ...(snap.data() as AppSettingsDoc) };
+        }
+      } catch (e) {}
+    }
     return { ...this.settings };
   }
 
