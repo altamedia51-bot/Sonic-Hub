@@ -27,7 +27,7 @@ app.use((req, res, next) => {
 });
 
 // Health endpoint
-app.get('/api/health', (_req, res) => {
+app.get(['/api/health', '/health'], (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Sonic Hub AI',
@@ -35,11 +35,18 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// Mount API routes
+// Mount API routes (supports both /api/* and direct prefix in case Vercel rewrites strip /api)
 app.use('/api/music', musicRouter);
+app.use('/music', musicRouter);
+
 app.use('/api/webhooks', webhookRouter);
+app.use('/webhooks', webhookRouter);
+
 app.use('/api/admin', adminRouter);
+app.use('/admin', adminRouter);
+
 app.use('/api/auth', authRouter);
+app.use('/auth', authRouter);
 
 // Frontend Vite integration
 async function startServer() {

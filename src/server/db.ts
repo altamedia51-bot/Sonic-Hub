@@ -132,6 +132,22 @@ export interface AppSettingsDoc {
   updatedAt: string;
 }
 
+// Helper to prevent serverless functions from hanging indefinitely on Firestore calls
+async function withTimeout<T>(promise: Promise<T>, timeoutMs = 2500): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Firestore operation timed out')), timeoutMs);
+  });
+  try {
+    const res = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 // In-memory cache for low-latency atomic operations and rapid sync
 class DatabaseStore {
   private users = new Map<string, UserDoc>();
@@ -165,15 +181,28 @@ class DatabaseStore {
 
   private initFirebase() {
     try {
+      let firebaseConfig: any = {
+        projectId: "fine-discovery-207pf",
+        appId: "1:319489128703:web:05c29729a5f565a06eb4ca",
+        apiKey: "AIzaSyDzc26l4X8Q5KSQCuhJBGsUM-ZaCtPTsis",
+        authDomain: "fine-discovery-207pf.firebaseapp.com",
+        firestoreDatabaseId: "ai-studio-sonichubai-54df4e0b-6e6d-4ab8-97ea-0988451a296e",
+        storageBucket: "fine-discovery-207pf.firebasestorage.app",
+        messagingSenderId: "319489128703"
+      };
+
       const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
       if (fs.existsSync(configPath)) {
-        const configRaw = fs.readFileSync(configPath, 'utf-8');
-        const firebaseConfig = JSON.parse(configRaw);
-        const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-        const dbId = firebaseConfig.firestoreDatabaseId || 'ai-studio-sonichubai-54df4e0b-6e6d-4ab8-97ea-0988451a296e';
-        this.firestoreDb = getFirestore(app, dbId);
-        console.log('[SonicHub DB] Firestore initialized successfully with dbId:', dbId);
+        try {
+          const configRaw = fs.readFileSync(configPath, 'utf-8');
+          firebaseConfig = { ...firebaseConfig, ...JSON.parse(configRaw) };
+        } catch (e) {}
       }
+
+      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      const dbId = firebaseConfig.firestoreDatabaseId || 'ai-studio-sonichubai-54df4e0b-6e6d-4ab8-97ea-0988451a296e';
+      this.firestoreDb = getFirestore(app, dbId);
+      console.log('[SonicHub DB] Firestore initialized successfully with dbId:', dbId);
     } catch (err: any) {
       console.warn('[SonicHub DB] Firestore init note:', err.message);
     }
@@ -185,7 +214,7 @@ class DatabaseStore {
       email: 'altamedia51@gmail.com',
       role: 'admin',
       status: 'active',
-      credits: 1000,
+      credits: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -212,9 +241,9 @@ class DatabaseStore {
     }
     if (this.firestoreDb) {
       try {
-        // Try direct document ID lookup
+        // Try direct document ID lookup with timeout
         const docRef = doc(this.firestoreDb, 'users', idOrEmail);
-        const snap = await getDoc(docRef);
+        const snap = await withTimeout(getDoc(docRef), 2000);
         if (snap.exists()) {
           const user = snap.data() as UserDoc;
           this.users.set(user.id, user);
@@ -222,13 +251,13 @@ class DatabaseStore {
           return user;
         }
 
-        // Try lookup by email field
+        // Try lookup by email field with timeout
         const q = query(
           collection(this.firestoreDb, 'users'),
           where('email', '==', key),
           limit(1)
         );
-        const emailSnap = await getDocs(q);
+        const emailSnap = await withTimeout(getDocs(q), 2000);
         if (!emailSnap.empty) {
           const user = emailSnap.docs[0].data() as UserDoc;
           this.users.set(user.id, user);
@@ -251,7 +280,7 @@ class DatabaseStore {
 
     if (this.firestoreDb) {
       try {
-        await setDoc(doc(this.firestoreDb, 'users', updated.id), updated, { merge: true });
+        await withTimeout(setDoc(doc(this.firestoreDb, 'users', updated.id), updated, { merge: true }), 2000);
       } catch (e) {
         console.warn('[DB] Firestore upsertUser fallback:', (e as Error).message);
       }
@@ -262,7 +291,7 @@ class DatabaseStore {
   async getAllUsers(): Promise<UserDoc[]> {
     if (this.firestoreDb) {
       try {
-        const snap = await getDocs(collection(this.firestoreDb, 'users'));
+        const snap = await withTimeout(getDocs(collection(this.firestoreDb, 'users')), 2000);
         for (const d of snap.docs) {
           const u = d.data() as UserDoc;
           this.users.set(u.id, u);
@@ -284,7 +313,7 @@ class DatabaseStore {
   async getKieAccounts(): Promise<KieAccountDoc[]> {
     if (this.firestoreDb) {
       try {
-        const snap = await getDocs(collection(this.firestoreDb, 'kie_accounts'));
+        const snap = await withTimeout(getDocs(collection(this.firestoreDb, 'kie_accounts')), 2000);
         for (const d of snap.docs) {
           const acc = d.data() as KieAccountDoc;
           this.kieAccounts.set(acc.id, acc);
@@ -301,7 +330,7 @@ class DatabaseStore {
     if (mem) return mem;
     if (this.firestoreDb) {
       try {
-        const snap = await getDoc(doc(this.firestoreDb, 'kie_accounts', id));
+        const snap = await withTimeout(getDoc(doc(this.firestoreDb, 'kie_accounts', id)), 2000);
         if (snap.exists()) {
           const acc = snap.data() as KieAccountDoc;
           this.kieAccounts.set(acc.id, acc);
@@ -318,7 +347,7 @@ class DatabaseStore {
 
     if (this.firestoreDb) {
       try {
-        await setDoc(doc(this.firestoreDb, 'kie_accounts', updated.id), updated, { merge: true });
+        await withTimeout(setDoc(doc(this.firestoreDb, 'kie_accounts', updated.id), updated, { merge: true }), 2000);
       } catch (e) {
         console.warn('[DB] Firestore upsertKieAccount fallback:', (e as Error).message);
       }
@@ -330,10 +359,8 @@ class DatabaseStore {
     this.kieAccounts.delete(id);
     if (this.firestoreDb) {
       try {
-        await deleteDoc(doc(this.firestoreDb, 'kie_accounts', id));
-      } catch (e) {
-        // Ignored
-      }
+        await withTimeout(deleteDoc(doc(this.firestoreDb, 'kie_accounts', id)), 2000);
+      } catch (e) {}
     }
     return true;
   }
