@@ -115,6 +115,14 @@ export const MODEL_REGISTRY: Record<string, ModelCapability> = {
 };
 
 export function getPublicAppUrl(): string {
+  // Automatic detection of Vercel production URL
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
   const url = process.env.PUBLIC_APP_URL || process.env.APP_URL || '';
   if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
     return url.replace(/\/+$/, '');

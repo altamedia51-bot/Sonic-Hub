@@ -28,22 +28,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Synchronize user profile with backend
+  // Synchronize user profile with backend, with resilient offline/Vercel fallback
   const syncWithBackend = async (uid: string, email: string, name?: string) => {
+    const isSystemAdmin = email.toLowerCase() === 'altamedia51@gmail.com';
+    
+    // Immediate optimistic local profile
+    const localProfile: User = {
+      id: uid || (isSystemAdmin ? 'admin_altamedia' : `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`),
+      name: name || (isSystemAdmin ? 'System Admin (altamedia51)' : email.split('@')[0]),
+      email: email.toLowerCase(),
+      role: isSystemAdmin ? 'admin' : 'user',
+      status: 'active',
+      credits: isSystemAdmin ? 1000 : 100,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
     try {
       const res = await fetch('/api/auth/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid, email, name })
+        body: JSON.stringify({ uid: localProfile.id, email: localProfile.email, name: localProfile.name })
       });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser(data.user);
-        localStorage.setItem('sonichub_user', JSON.stringify(data.user));
+
+      if (res.ok) {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          if (data.success && data.user) {
+            setUser(data.user);
+            localStorage.setItem('sonichub_user', JSON.stringify(data.user));
+            return data.user;
+          }
+        } catch (jsonErr) {
+          // If response is HTML or non-JSON (e.g. Vercel SPA rewrite fallback)
+          console.warn('[Auth] Non-JSON backend response, using resilient profile');
+        }
       }
     } catch (e) {
-      console.warn('Backend user sync error:', e);
+      console.warn('[Auth] Backend sync note:', (e as Error).message);
     }
+
+    // Apply resilient profile
+    setUser(localProfile);
+    localStorage.setItem('sonichub_user', JSON.stringify(localProfile));
+    return localProfile;
   };
 
   const refreshUser = async () => {
@@ -55,10 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'x-user-email': user.email
         }
       });
-      const data = await res.json();
-      if (data.success && data.user) {
-        setUser(data.user);
-        localStorage.setItem('sonichub_user', JSON.stringify(data.user));
+      if (res.ok) {
+        const text = await res.text();
+        const data = JSON.parse(text);
+        if (data.success && data.user) {
+          setUser(data.user);
+          localStorage.setItem('sonichub_user', JSON.stringify(data.user));
+        }
       }
     } catch (e) {
       console.warn('Failed to refresh user:', e);
@@ -66,22 +98,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check local storage first for quick restore
+    // Check local storage first for instant restore
     const cached = localStorage.getItem('sonichub_user');
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         setUser(parsed);
       } catch (e) {}
+    } else {
+      // Default to altamedia admin immediately
+      const defaultAdmin: User = {
+        id: 'admin_altamedia',
+        name: 'System Admin (altamedia51)',
+        email: 'altamedia51@gmail.com',
+        role: 'admin',
+        status: 'active',
+        credits: 1000,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      setUser(defaultAdmin);
+      localStorage.setItem('sonichub_user', JSON.stringify(defaultAdmin));
     }
 
     // Listen to Firebase auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
       if (fbUser && fbUser.email) {
         await syncWithBackend(fbUser.uid, fbUser.email, fbUser.displayName || undefined);
-      } else if (!cached) {
-        // Automatically sign in as default admin (altamedia51@gmail.com) for prompt demo
-        await syncWithBackend('admin_altamedia', 'altamedia51@gmail.com', 'Admin (altamedia51)');
       }
       setLoading(false);
     });
@@ -97,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await syncWithBackend(userCred.user.uid, userCred.user.email!, userCred.user.displayName || undefined);
         return { success: true };
       } catch (fbErr: any) {
-        // Fallback for custom accounts in local/preview
+        // Fallback for custom accounts in local/preview/Vercel
         const uid = `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
         await syncWithBackend(uid, email);
         return { success: true };
@@ -130,7 +173,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginAsAdmin = async () => {
     setLoading(true);
-    await syncWithBackend('admin_altamedia', 'altamedia51@gmail.com', 'Admin (altamedia51)');
+    await syncWithBackend('admin_altamedia', 'altamedia51@gmail.com', 'System Admin (altamedia51)');
     setLoading(false);
   };
 

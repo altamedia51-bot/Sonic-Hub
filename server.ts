@@ -65,7 +65,12 @@ async function startServer() {
   });
 }
 
-startServer().catch(err => {
-  console.error('[Sonic Hub AI] Failed to start server:', err);
-  process.exit(1);
-});
+// In Vercel serverless functions, the app is exported rather than started with app.listen
+if (process.env.VERCEL !== '1') {
+  startServer().catch(err => {
+    console.error('[Sonic Hub AI] Failed to start server:', err);
+    process.exit(1);
+  });
+}
+
+export default app;
