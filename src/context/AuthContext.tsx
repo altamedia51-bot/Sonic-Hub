@@ -150,20 +150,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsed = JSON.parse(cached);
         setUser(parsed);
       } catch (e) {}
-    } else if (!isExplicitLogout) {
-      // Default to altamedia admin for convenient testing
-      const defaultAdmin: User = {
-        id: 'admin_altamedia',
-        name: 'System Admin (altamedia51)',
-        email: 'altamedia51@gmail.com',
-        role: 'admin',
-        status: 'active',
-        credits: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      setUser(defaultAdmin);
-      localStorage.setItem('sonichub_user', JSON.stringify(defaultAdmin));
+    } else {
+      setUser(null);
     }
 
     // Listen to Firebase auth state

@@ -35,6 +35,11 @@ app.get(['/api/health', '/health'], (_req, res) => {
   });
 });
 
+// Favicon fallback
+app.get('/favicon.ico', (_req, res) => {
+  res.redirect(301, '/favicon.svg');
+});
+
 // Mount API routes (supports both /api/* and direct prefix in case Vercel rewrites strip /api)
 app.use('/api/music', musicRouter);
 app.use('/music', musicRouter);

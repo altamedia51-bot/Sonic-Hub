@@ -105,7 +105,7 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
             {totalSongs}
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
-            Generated via KIE.ai Suno
+            Generated via Studio Suno Engine
           </p>
         </div>
 
@@ -137,7 +137,7 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
             {processingCount}
           </div>
           <p className="text-[11px] text-zinc-500 mt-1">
-            Active KIE rendering tasks
+            Active audio synthesis tasks
           </p>
         </div>
 

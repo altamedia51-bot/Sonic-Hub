@@ -1,6 +1,6 @@
 {
   "name": "Sonic Hub AI",
-  "description": "Production-oriented full-stack AI music generation platform powered by the official KIE.ai Suno API with multi-key management, real-time jobs, and audio playback.",
+  "description": "Production-oriented full-stack AI music generation platform powered by the official Suno V6 AI Engine with multi-key management, real-time jobs, and audio playback.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

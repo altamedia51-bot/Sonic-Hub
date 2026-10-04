@@ -26,7 +26,7 @@ interface StudioPageProps {
 }
 
 export const StudioPage: React.FC<StudioPageProps> = ({ onGoToAdmin }) => {
-  const { user, credits, refreshUser } = useAuth();
+  const { user, isAdmin, credits, refreshUser } = useAuth();
   const { playTrack, currentTrack, isPlaying } = usePlayer();
 
   // Form State
@@ -179,7 +179,7 @@ Fading into the midnight hum...`);
             refreshUser();
           } else if (data.status === 'FAILED') {
             clearInterval(interval);
-            setErrorMsg(data.error || 'Music generation failed on KIE.ai provider.');
+            setErrorMsg(data.error || 'Music generation failed. Please try again.');
             setRefundNotif('Credits have been automatically refunded to your balance.');
             refreshUser();
           }
@@ -269,16 +269,16 @@ Fading into the midnight hum...`);
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
       
       {/* Studio Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/40 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live KIE.ai Suno V6 API
+              Live Suno V6 AI Engine
             </span>
-            <span className="text-xs text-zinc-500 font-mono">No Mocks • Real Task Processing</span>
+            <span className="hidden sm:inline-block text-xs text-zinc-500 font-mono">No Mocks • Real Task Processing</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-mono">
+          <h1 className="text-xl sm:text-3xl font-black tracking-tight text-white font-mono break-words">
             SONIC STUDIO <span className="text-amber-400">CONSOLE</span>
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
@@ -287,29 +287,29 @@ Fading into the midnight hum...`);
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center gap-3">
+          <div className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center gap-3">
             <div className="text-right">
-              <div className="text-[11px] text-zinc-500 uppercase font-medium">Estimated Cost</div>
-              <div className="text-sm font-bold text-amber-300 font-mono">
+              <div className="text-[10px] sm:text-[11px] text-zinc-500 uppercase font-medium">Estimated Cost</div>
+              <div className="text-xs sm:text-sm font-bold text-amber-300 font-mono">
                 {selectedModelCap.defaultCreditCost || 10} Credits
               </div>
             </div>
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 font-mono font-bold text-xs">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400 font-mono font-bold text-xs">
               ⚡
             </div>
           </div>
         </div>
       </div>
 
-      {/* Provider Warning Banner if no KIE accounts configured */}
-      {hasKieAccounts === false && (
+      {/* Provider Warning Banner if no accounts configured (Admin only) */}
+      {isAdmin && hasKieAccounts === false && (
         <div className="mb-6 p-4 rounded-xl bg-amber-950/40 border border-amber-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-start gap-3">
             <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-amber-200">KIE.ai Music Provider Not Configured</h4>
+              <h4 className="text-sm font-bold text-amber-200">AI Engine Provider Not Configured</h4>
               <p className="text-xs text-amber-300/80 mt-0.5">
-                No active encrypted KIE API keys were detected in your database. Sonic Hub strictly adheres to the NO-MOCK rule: you must configure at least one valid KIE API key in the Admin Portal to generate real audio.
+                No active generation keys were detected in your system. Please configure an active provider key in the Admin Portal to generate real audio.
               </p>
             </div>
           </div>
@@ -318,7 +318,7 @@ Fading into the midnight hum...`);
               onClick={onGoToAdmin}
               className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold whitespace-nowrap transition"
             >
-              Add KIE Account →
+              Configure Provider →
             </button>
           )}
         </div>
@@ -339,18 +339,28 @@ Fading into the midnight hum...`);
 
       {/* Active Job Progress Display */}
       {activeJob && (
-        <div className="mb-8 p-6 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-xl">
+        <div className="mb-8 p-4 sm:p-6 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-xl overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-800">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 font-mono">Job: {activeJob.id}</span>
+            <div className="min-w-0 max-w-full">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="text-[11px] sm:text-xs text-zinc-400 font-mono truncate max-w-[180px] sm:max-w-none">
+                  Job: {activeJob.id}
+                </span>
                 {activeJob.taskId && (
-                  <span className="px-2 py-0.5 rounded bg-zinc-800 text-[10px] text-amber-300 font-mono">
-                    KIE Task: {activeJob.taskId}
+                  <span 
+                    title={`Task ID: ${activeJob.taskId}`}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-[10px] text-amber-300 font-mono max-w-full truncate"
+                  >
+                    <span className="text-zinc-500">Task:</span>
+                    <span className="font-semibold">
+                      {activeJob.taskId.length > 16 
+                        ? `${activeJob.taskId.slice(0, 8)}...${activeJob.taskId.slice(-6)}` 
+                        : activeJob.taskId}
+                    </span>
                   </span>
                 )}
               </div>
-              <h3 className="text-lg font-bold text-white mt-1">{activeJob.title}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-white mt-1 truncate">{activeJob.title}</h3>
             </div>
 
             {/* Genuine State Badge */}
@@ -362,7 +372,7 @@ Fading into the midnight hum...`);
               )}
               {activeJob.status === 'SUBMITTING' && (
                 <span className="px-3 py-1 rounded-full bg-blue-950 text-blue-300 border border-blue-800 text-xs font-semibold flex items-center gap-1.5 animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> SUBMITTING TO KIE
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> SUBMITTING TO ENGINE
                 </span>
               )}
               {activeJob.status === 'PROCESSING' && (
@@ -403,7 +413,7 @@ Fading into the midnight hum...`);
                   ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
                   : 'bg-zinc-950 border-zinc-800 text-zinc-500'
               }`}>
-                2. Submitting to KIE
+                2. Submitting to Engine
               </div>
               <div className={`p-2 rounded-lg border ${
                 activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
@@ -802,7 +812,7 @@ Fading into the midnight hum...`);
               ) : activeJob && (activeJob.status === 'PROCESSING' || activeJob.status === 'SUBMITTING') ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  GENERATING MUSIC ON KIE.AI ({activeJob.status})...
+                  GENERATING MUSIC IN STUDIO ({activeJob.status})...
                 </>
               ) : (
                 <>

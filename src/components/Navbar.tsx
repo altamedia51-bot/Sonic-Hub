@@ -19,7 +19,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openAuthModal }) => {
-  const { user, isAdmin, credits, logout, loginAsAdmin, loginAsDemoUser } = useAuth();
+  const { user, isAdmin, credits, logout } = useAuth();
   const [userDropdown, setUserDropdown] = useState(false);
 
   return (
@@ -29,21 +29,21 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
         {/* Brand Logo */}
         <div 
           onClick={() => setCurrentTab('studio')}
-          className="flex items-center gap-3 cursor-pointer group"
+          className="flex items-center gap-2 sm:gap-3 cursor-pointer group min-w-0"
         >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-900/20 group-hover:scale-105 transition-transform duration-200">
-            <Music className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-900/20 group-hover:scale-105 transition-transform duration-200 flex-shrink-0">
+            <Music className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold tracking-tight text-white text-lg font-mono">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="font-extrabold tracking-tight text-white text-base sm:text-lg font-mono whitespace-nowrap">
                 SONIC HUB <span className="bg-gradient-to-r from-amber-400 to-rose-400 bg-clip-text text-transparent">AI</span>
               </span>
-              <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+              <span className="hidden sm:inline-flex text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 whitespace-nowrap">
                 Suno V6
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400 -mt-0.5">Official KIE.ai Engine</p>
+            <p className="hidden sm:block text-[11px] text-zinc-400 -mt-0.5 truncate">Official platform Engine ai</p>
           </div>
         </div>
 
@@ -113,29 +113,29 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
         </nav>
 
         {/* User / Credits / Auth Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           
           {/* Credits Balance Pill */}
           <div 
             onClick={() => setCurrentTab('dashboard')}
             title="Your Generation Credits"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-amber-500/50 transition-colors"
+            className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-zinc-900 border border-zinc-800 cursor-pointer hover:border-amber-500/50 transition-colors flex-shrink-0"
           >
-            <div className="w-5 h-5 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Coins className="w-3 h-3 text-amber-400" />
+            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+              <Coins className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400" />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-amber-300">{credits.toLocaleString()}</span>
-              <span className="text-[10px] text-zinc-400 uppercase font-medium">Credits</span>
+            <div className="flex items-center gap-1">
+              <span className="text-xs font-bold text-amber-300 font-mono">{credits.toLocaleString()}</span>
+              <span className="hidden sm:inline text-[10px] text-zinc-400 uppercase font-medium">Credits</span>
             </div>
           </div>
 
           {/* User Profile / Menu */}
           {user ? (
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setUserDropdown(!userDropdown)}
-                className="flex items-center gap-2 p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
+                className="flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition"
               >
                 <div className="w-7 h-7 rounded-lg bg-zinc-800 flex items-center justify-center font-bold text-xs text-white">
                   {user.name ? user.name.slice(0, 2).toUpperCase() : 'U'}
@@ -171,27 +171,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
                         className="w-full text-left px-4 py-2 text-xs text-rose-400 hover:bg-zinc-800 flex items-center gap-2"
                       >
                         <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                        Admin KIE Management
+                        Admin Mission Control
                       </button>
                     )}
-                  </div>
-
-                  <div className="border-t border-zinc-800 pt-1">
-                    <div className="px-3 py-1">
-                      <span className="text-[10px] uppercase font-bold text-zinc-500">Quick Test Switcher</span>
-                    </div>
-                    <button
-                      onClick={() => { loginAsAdmin(); setUserDropdown(false); }}
-                      className="w-full text-left px-4 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    >
-                      Switch to System Admin
-                    </button>
-                    <button
-                      onClick={() => { loginAsDemoUser(); setUserDropdown(false); }}
-                      className="w-full text-left px-4 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-zinc-800"
-                    >
-                      Switch to Standard User
-                    </button>
                   </div>
 
                   <div className="border-t border-zinc-800 pt-1">
@@ -220,42 +202,42 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
       </div>
 
       {/* Mobile nav bar */}
-      <div className="flex md:hidden border-t border-zinc-800/60 bg-zinc-950 px-2 py-1 justify-around">
+      <div className="flex md:hidden border-t border-zinc-800/80 bg-zinc-950/95 px-2 py-1.5 justify-around items-center">
         <button
           onClick={() => setCurrentTab('studio')}
-          className={`flex flex-col items-center py-1 px-3 text-[10px] font-medium ${
-            currentTab === 'studio' ? 'text-amber-400' : 'text-zinc-500'
+          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
+            currentTab === 'studio' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="w-4 h-4 mb-0.5" />
           Studio
         </button>
         <button
           onClick={() => setCurrentTab('library')}
-          className={`flex flex-col items-center py-1 px-3 text-[10px] font-medium ${
-            currentTab === 'library' ? 'text-amber-400' : 'text-zinc-500'
+          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
+            currentTab === 'library' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          <Disc className="w-4 h-4" />
+          <Disc className="w-4 h-4 mb-0.5" />
           Songs
         </button>
         <button
           onClick={() => setCurrentTab('dashboard')}
-          className={`flex flex-col items-center py-1 px-3 text-[10px] font-medium ${
-            currentTab === 'dashboard' ? 'text-amber-400' : 'text-zinc-500'
+          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
+            currentTab === 'dashboard' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
-          <LayoutDashboard className="w-4 h-4" />
+          <LayoutDashboard className="w-4 h-4 mb-0.5" />
           Dashboard
         </button>
         {isAdmin && (
           <button
             onClick={() => setCurrentTab('admin')}
-            className={`flex flex-col items-center py-1 px-3 text-[10px] font-medium ${
-              currentTab === 'admin' ? 'text-rose-400' : 'text-zinc-500'
+            className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
+              currentTab === 'admin' ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <ShieldAlert className="w-4 h-4" />
+            <ShieldAlert className="w-4 h-4 mb-0.5" />
             Admin
           </button>
         )}

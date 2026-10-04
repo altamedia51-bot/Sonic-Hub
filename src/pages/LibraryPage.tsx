@@ -92,7 +92,7 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
             MY AUDIO <span className="text-amber-400">LIBRARY</span>
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-            Browse, play, and download your authentic KIE.ai Suno music generations.
+            Browse, play, and download your authentic studio Suno music generations.
           </p>
         </div>
 
@@ -122,7 +122,7 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
             <div className="flex items-center gap-2">
               <Flame className="w-5 h-5 text-amber-400 animate-bounce" />
               <h3 className="text-sm font-bold text-white">
-                Music Synthesizing on KIE.ai ({activeJobs.length} active {activeJobs.length === 1 ? 'task' : 'tasks'})
+                Music Synthesizing in Studio ({activeJobs.length} active {activeJobs.length === 1 ? 'task' : 'tasks'})
               </h3>
             </div>
             <span className="text-[11px] text-zinc-400 flex items-center gap-1.5 font-mono">

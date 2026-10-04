@@ -14,7 +14,7 @@ export const DemoPage: React.FC<{ onGoToStudio: () => void }> = ({ onGoToStudio 
           <h4 className="font-bold text-white">Section 78 Isolated UI Playground Sandbox (/demo)</h4>
           <p className="mt-0.5 text-zinc-300">
             This route is strictly an interactive component sandbox for UI inspection.
-            The production Studio route (<button onClick={onGoToStudio} className="underline text-amber-400 font-bold">Studio / Create</button>) strictly executes real KIE.ai Suno API tasks with real database reservations, never mock data.
+            The production Studio route (<button onClick={onGoToStudio} className="underline text-amber-400 font-bold">Studio / Create</button>) strictly executes real Suno AI synthesis tasks with real database reservations, never mock data.
           </p>
         </div>
       </div>

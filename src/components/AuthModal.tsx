@@ -8,7 +8,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { login, register, loginAsAdmin, loginAsDemoUser } = useAuth();
+  const { login, register } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -136,31 +136,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           >
             {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
           </button>
-        </div>
-
-        {/* 1-Click Quick Testing Switcher */}
-        <div className="mt-6 pt-5 border-t border-zinc-800">
-          <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider text-center mb-3">
-            Developer / Evaluator Quick Access
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={async () => { await loginAsAdmin(); onClose(); }}
-              className="flex items-center justify-center gap-1.5 p-2 rounded-lg bg-rose-950/40 border border-rose-800/40 hover:bg-rose-900/50 text-rose-300 text-xs font-medium transition"
-            >
-              <Shield className="w-3.5 h-3.5" />
-              Login as Admin
-            </button>
-            <button
-              type="button"
-              onClick={async () => { await loginAsDemoUser(); onClose(); }}
-              className="flex items-center justify-center gap-1.5 p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Login as Artist
-            </button>
-          </div>
         </div>
 
       </div>

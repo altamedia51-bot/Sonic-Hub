@@ -31,7 +31,7 @@ import {
 } from 'firebase/firestore';
 
 export const AdminPage: React.FC = () => {
-  const { user, refreshUser } = useAuth();
+  const { user, isAdmin, refreshUser } = useAuth();
   const [subTab, setSubTab] = useState<'accounts' | 'users' | 'generations' | 'logs' | 'settings'>('accounts');
 
   // Stats
@@ -186,8 +186,10 @@ export const AdminPage: React.FC = () => {
   };
 
   useEffect(() => {
-    loadAll();
-  }, [user]);
+    if (isAdmin) {
+      loadAll();
+    }
+  }, [user, isAdmin]);
 
   // Add Account (persists directly to Google Cloud Firestore)
   const handleAddAccount = async (e: React.FormEvent) => {
@@ -526,6 +528,20 @@ export const AdminPage: React.FC = () => {
       setMsg({ type: 'error', text: e.message });
     }
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-rose-950/60 border border-rose-800 text-rose-400 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-rose-950/50">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white font-mono">Restricted Access</h2>
+        <p className="text-sm text-zinc-400 mt-2">
+          Administrator privileges are required to access this portal. Please contact the system owner if you require access.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-32">
