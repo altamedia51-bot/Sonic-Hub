@@ -22,7 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { KieAccount, User, GenerationJob, SystemLog, AppSettings } from '../types';
 
 export const AdminPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [subTab, setSubTab] = useState<'accounts' | 'users' | 'generations' | 'logs' | 'settings'>('accounts');
 
   // Stats
@@ -34,6 +34,8 @@ export const AdminPage: React.FC = () => {
   const [showRotateKeyModal, setShowRotateKeyModal] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [refreshingKieCredits, setRefreshingKieCredits] = useState(false);
 
   // Add Account Form
   const [accName, setAccName] = useState('');
@@ -243,6 +245,52 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  // Refresh Real KIE Credits for an Account
+  const handleRefreshCredits = async (id: string) => {
+    try {
+      setCheckingId(id);
+      const res = await fetch(`/api/admin/kie-accounts/${id}/refresh-credits`, {
+        method: 'POST',
+        headers: authHeaders
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: 'success', text: data.message });
+        await loadAll();
+        await refreshUser();
+      } else {
+        setMsg({ type: 'error', text: data.message || 'Failed to refresh KIE credits' });
+      }
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.message });
+    } finally {
+      setCheckingId(null);
+    }
+  };
+
+  // Refresh Real KIE Credits for All Accounts
+  const handleRefreshAllKieCredits = async () => {
+    try {
+      setRefreshingKieCredits(true);
+      const res = await fetch('/api/admin/kie-accounts/refresh-all-credits', {
+        method: 'POST',
+        headers: authHeaders
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMsg({ type: 'success', text: data.message });
+        await loadAll();
+        await refreshUser();
+      } else {
+        setMsg({ type: 'error', text: data.message || 'Failed to refresh all KIE balances' });
+      }
+    } catch (err: any) {
+      setMsg({ type: 'error', text: err.message });
+    } finally {
+      setRefreshingKieCredits(false);
+    }
+  };
+
   // Update Settings
   const handleSaveSettings = async (updates: Partial<AppSettings>) => {
     try {
@@ -310,15 +358,19 @@ export const AdminPage: React.FC = () => {
             <span className="text-[10px] text-zinc-500 font-mono">{stats.queuedJobs} queued</span>
           </div>
           <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
-            <span className="text-[10px] text-zinc-500 uppercase font-mono">Credits Consumed</span>
-            <div className="text-xl font-bold text-amber-300 font-mono mt-1">{stats.creditsUsed}</div>
-            <span className="text-[10px] text-zinc-500 font-mono">{stats.todayJobs} jobs today</span>
+            <span className="text-[10px] text-zinc-500 uppercase font-mono">Total Real KIE Balance</span>
+            <div className={`text-xl font-bold font-mono mt-1 ${(stats.totalKieCredits || 0) > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {(stats.totalKieCredits || 0).toLocaleString()} Credits
+            </div>
+            <span className="text-[10px] text-zinc-400 font-mono">
+              {(stats.totalKieCredits || 0) > 0 ? 'Live balance from KIE.ai' : '0 Credits (Empty / Top Up)'}
+            </span>
           </div>
           <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
             <span className="text-[10px] text-zinc-500 uppercase font-mono">KIE Providers</span>
-            <div className="text-xl font-bold text-emerald-400 font-mono mt-1">{stats.activeAccounts} Active</div>
-            <span className={`text-[10px] font-mono ${stats.unhealthyAccounts > 0 ? 'text-rose-400' : 'text-zinc-500'}`}>
-              {stats.unhealthyAccounts} Unhealthy
+            <div className="text-xl font-bold text-white font-mono mt-1">{stats.activeAccounts} Active</div>
+            <span className={`text-[10px] font-mono ${(stats.emptyAccounts || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {stats.emptyAccounts || 0} Empty (0 Credit)
             </span>
           </div>
         </div>
@@ -402,23 +454,36 @@ export const AdminPage: React.FC = () => {
       {/* --- SUBTAB: KIE ACCOUNTS --- */}
       {subTab === 'accounts' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-white uppercase tracking-wider">
                 Configured KIE.ai Provider Keys
               </h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Keys are encrypted server-side with AES-256-GCM. Unmasked keys are never returned to client.
+                Balances are read live via official KIE.ai Credit API (<code className="text-amber-300">/api/v1/chat/credit</code>).
               </p>
             </div>
 
-            <button
-              onClick={() => setShowAddAccountModal(true)}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-2 transition"
-            >
-              <Plus className="w-4 h-4" />
-              Add KIE Account
-            </button>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={handleRefreshAllKieCredits}
+                disabled={refreshingKieCredits}
+                className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-bold text-xs flex items-center gap-2 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingKieCredits ? 'animate-spin' : ''}`} />
+                Check All KIE Balances
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAddAccountModal(true)}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-2 transition"
+              >
+                <Plus className="w-4 h-4" />
+                Add KIE Account
+              </button>
+            </div>
           </div>
 
           {testResult && (
@@ -484,6 +549,46 @@ export const AdminPage: React.FC = () => {
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                  </div>
+
+                  {/* Real-Time KIE Credit Balance Badge */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                    acc.credits !== undefined && acc.credits > 0
+                      ? 'bg-emerald-950/40 border-emerald-800/70 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-800/70 text-rose-300'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <Coins className={`w-4 h-4 ${acc.credits !== undefined && acc.credits > 0 ? 'text-emerald-400' : 'text-rose-400'}`} />
+                      <div>
+                        <div className="flex items-center gap-2 font-mono font-bold text-sm">
+                          <span>{acc.credits !== undefined ? `${acc.credits.toLocaleString()} Credits` : '0 Credits'}</span>
+                          {acc.credits !== undefined && acc.credits > 0 ? (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-900/60 text-emerald-300 font-sans font-semibold">
+                              Ready
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-900/60 text-rose-300 font-sans font-semibold">
+                              0 Credits (Empty)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-zinc-400">
+                          {acc.lastCheckedCreditsAt 
+                            ? `Live KIE Balance • ${new Date(acc.lastCheckedCreditsAt).toLocaleTimeString()}`
+                            : 'Live from api.kie.ai'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRefreshCredits(acc.id)}
+                      disabled={checkingId === acc.id}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px] font-semibold text-amber-300 flex items-center gap-1.5 transition flex-shrink-0"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${checkingId === acc.id ? 'animate-spin' : ''}`} />
+                      Check
+                    </button>
                   </div>
 
                   {/* Account Metrics Grid */}

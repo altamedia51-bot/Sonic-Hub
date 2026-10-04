@@ -40,6 +40,25 @@ async function requireAdmin(req: Request, res: Response, next: () => void) {
 
 adminRouter.use(requireAdmin);
 
+// Helper to sync admin user credit balance with real total KIE credits
+async function syncAdminTotalKieCredits(): Promise<number> {
+  const accounts = await dbStore.getKieAccounts();
+  const activeAccounts = accounts.filter(a => a.status === 'ACTIVE');
+  let total = 0;
+  for (const acc of activeAccounts) {
+    if (typeof acc.credits === 'number') {
+      total += acc.credits;
+    }
+  }
+
+  const admin = await dbStore.getUser('altamedia51@gmail.com');
+  if (admin) {
+    admin.credits = total;
+    await dbStore.upsertUser(admin);
+  }
+  return total;
+}
+
 // GET /api/admin/stats
 adminRouter.get('/stats', async (_req: Request, res: Response) => {
   const users = await dbStore.getAllUsers();
@@ -64,9 +83,13 @@ adminRouter.get('/stats', async (_req: Request, res: Response) => {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayJobs = jobs.filter(j => j.createdAt.startsWith(todayStr)).length;
 
-  // KIE Accounts status
+  // KIE Accounts status and credits
   const activeAccounts = accounts.filter(a => a.status === 'ACTIVE').length;
   const unhealthyAccounts = accounts.filter(a => a.status === 'ERROR' || a.status === 'RATE_LIMITED').length;
+  const totalKieCredits = accounts
+    .filter(a => a.status === 'ACTIVE')
+    .reduce((sum, a) => sum + (a.credits || 0), 0);
+  const emptyAccounts = accounts.filter(a => a.status === 'ACTIVE' && (a.credits === 0 || a.credits === undefined)).length;
 
   return res.status(200).json({
     success: true,
@@ -81,7 +104,9 @@ adminRouter.get('/stats', async (_req: Request, res: Response) => {
       creditsUsed,
       todayJobs,
       activeAccounts,
-      unhealthyAccounts
+      unhealthyAccounts,
+      totalKieCredits,
+      emptyAccounts
     }
   });
 });
@@ -89,6 +114,30 @@ adminRouter.get('/stats', async (_req: Request, res: Response) => {
 // GET /api/admin/kie-accounts
 adminRouter.get('/kie-accounts', async (_req: Request, res: Response) => {
   const accounts = await dbStore.getKieAccounts();
+
+  // Actively verify credit balances from KIE.ai
+  for (const acc of accounts) {
+    // Refresh if not checked in the last 20 seconds
+    const lastChecked = acc.lastCheckedCreditsAt ? new Date(acc.lastCheckedCreditsAt).getTime() : 0;
+    const now = Date.now();
+    if (now - lastChecked > 20000 && acc.status === 'ACTIVE') {
+      try {
+        const decrypted = decryptApiKey(acc.encryptedApiKey);
+        const creditRes = await kieSunoProvider.getAccountCredits(decrypted);
+        if (creditRes.success) {
+          acc.credits = creditRes.credits;
+          acc.lastCheckedCreditsAt = new Date().toISOString();
+          await dbStore.upsertKieAccount(acc);
+        }
+      } catch (e: any) {
+        console.warn(`[KIE Balance] Failed checking credits for ${acc.name}:`, e.message);
+      }
+    }
+  }
+
+  // Synchronize admin user's credit balance with real total KIE balance
+  await syncAdminTotalKieCredits();
+
   // Strip encryptedApiKey before sending to frontend! Never leak encrypted key.
   const safeAccounts = accounts.map(({ encryptedApiKey, ...safe }) => safe);
   return res.status(200).json({ success: true, accounts: safeAccounts });
@@ -111,6 +160,15 @@ adminRouter.post('/kie-accounts', async (req: Request, res: Response) => {
   const masked = maskApiKey(cleanKey);
   const id = `kie_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
+  // Query real KIE credit immediately
+  let initialCredits = 0;
+  try {
+    const credRes = await kieSunoProvider.getAccountCredits(cleanKey);
+    if (credRes.success) {
+      initialCredits = credRes.credits;
+    }
+  } catch (e) {}
+
   const newAccount: KieAccountDoc = {
     id,
     name: name.trim(),
@@ -122,18 +180,21 @@ adminRouter.post('/kie-accounts', async (req: Request, res: Response) => {
     usageToday: 0,
     maxConcurrentJobs: Number(maxConcurrentJobs) || 3,
     activeJobs: 0,
+    credits: initialCredits,
+    lastCheckedCreditsAt: new Date().toISOString(),
     failureCount: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
   await dbStore.upsertKieAccount(newAccount);
+  await syncAdminTotalKieCredits();
 
   await dbStore.addLog({
     id: `log_${Date.now()}`,
     level: 'info',
     category: 'ADMIN',
-    message: `Admin added KIE Account: ${name.trim()} (${masked})`,
+    message: `Admin added KIE Account: ${name.trim()} (${masked}) with ${initialCredits} real KIE credits`,
     provider: 'KIE_SUNO',
     providerAccountId: id,
     createdAt: new Date().toISOString()
@@ -141,6 +202,73 @@ adminRouter.post('/kie-accounts', async (req: Request, res: Response) => {
 
   const { encryptedApiKey, ...safe } = newAccount;
   return res.status(201).json({ success: true, account: safe });
+});
+
+// POST /api/admin/kie-accounts/:id/refresh-credits
+adminRouter.post('/kie-accounts/:id/refresh-credits', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const account = await dbStore.getKieAccount(id);
+  if (!account) {
+    return res.status(404).json({ success: false, message: 'Account not found' });
+  }
+
+  try {
+    const decryptedKey = decryptApiKey(account.encryptedApiKey);
+    const creditRes = await kieSunoProvider.getAccountCredits(decryptedKey);
+
+    if (creditRes.success) {
+      account.credits = creditRes.credits;
+      account.lastCheckedCreditsAt = new Date().toISOString();
+      await dbStore.upsertKieAccount(account);
+      await syncAdminTotalKieCredits();
+
+      const { encryptedApiKey, ...safe } = account;
+      return res.status(200).json({
+        success: true,
+        credits: creditRes.credits,
+        account: safe,
+        message: `Real-time KIE.ai balance: ${creditRes.credits} credits`
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: creditRes.message || 'Failed to query KIE.ai credit API'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/admin/kie-accounts/refresh-all-credits
+adminRouter.post('/kie-accounts/refresh-all-credits', async (_req: Request, res: Response) => {
+  const accounts = await dbStore.getKieAccounts();
+  const results = [];
+
+  for (const acc of accounts) {
+    try {
+      const decryptedKey = decryptApiKey(acc.encryptedApiKey);
+      const creditRes = await kieSunoProvider.getAccountCredits(decryptedKey);
+      if (creditRes.success) {
+        acc.credits = creditRes.credits;
+        acc.lastCheckedCreditsAt = new Date().toISOString();
+        await dbStore.upsertKieAccount(acc);
+      }
+    } catch (e: any) {
+      console.warn(`[KIE Refresh] Error for account ${acc.id}:`, e.message);
+    }
+    const { encryptedApiKey, ...safe } = acc;
+    results.push(safe);
+  }
+
+  const total = await syncAdminTotalKieCredits();
+
+  return res.status(200).json({
+    success: true,
+    totalCredits: total,
+    accounts: results,
+    message: `Updated all KIE account balances. Total real credits: ${total}`
+  });
 });
 
 // PATCH /api/admin/kie-accounts/:id

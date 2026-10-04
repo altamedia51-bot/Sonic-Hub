@@ -19,6 +19,8 @@ export interface KieAccount {
   usageToday: number;
   maxConcurrentJobs: number;
   activeJobs: number;
+  credits?: number;
+  lastCheckedCreditsAt?: string | null;
   cooldownUntil?: string | null;
   failureCount: number;
   lastUsedAt?: string | null;

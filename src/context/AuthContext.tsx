@@ -39,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: email.toLowerCase(),
       role: isSystemAdmin ? 'admin' : 'user',
       status: 'active',
-      credits: isSystemAdmin ? 1000 : 100,
+      credits: isSystemAdmin ? 0 : 50,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -114,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'altamedia51@gmail.com',
         role: 'admin',
         status: 'active',
-        credits: 1000,
+        credits: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };

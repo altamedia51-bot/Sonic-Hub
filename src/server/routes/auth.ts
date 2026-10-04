@@ -3,6 +3,12 @@ import { dbStore, UserDoc } from '../db';
 
 export const authRouter = Router();
 
+async function getRealAdminKieCredits(): Promise<number> {
+  const accounts = await dbStore.getKieAccounts();
+  const active = accounts.filter(a => a.status === 'ACTIVE');
+  return active.reduce((sum, a) => sum + (a.credits || 0), 0);
+}
+
 // POST /api/auth/sync
 authRouter.post('/sync', async (req: Request, res: Response) => {
   try {
@@ -20,6 +26,7 @@ authRouter.post('/sync', async (req: Request, res: Response) => {
     }
 
     const isSystemAdmin = email.toLowerCase() === 'altamedia51@gmail.com';
+    const adminCredits = isSystemAdmin ? await getRealAdminKieCredits() : settings.defaultUserCredit;
 
     if (!existing) {
       const newUser: UserDoc = {
@@ -28,7 +35,7 @@ authRouter.post('/sync', async (req: Request, res: Response) => {
         name: name || email.split('@')[0],
         role: isSystemAdmin ? 'admin' : 'user',
         status: 'active',
-        credits: isSystemAdmin ? 1000 : settings.defaultUserCredit,
+        credits: adminCredits,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -36,9 +43,10 @@ authRouter.post('/sync', async (req: Request, res: Response) => {
       return res.status(200).json({ success: true, user: created });
     }
 
-    // If existing, ensure altamedia gets admin role
-    if (isSystemAdmin && existing.role !== 'admin') {
+    // If existing admin, update role and synchronize with real KIE credits
+    if (isSystemAdmin) {
       existing.role = 'admin';
+      existing.credits = await getRealAdminKieCredits();
       existing = await dbStore.upsertUser(existing);
     }
 
@@ -67,6 +75,15 @@ authRouter.get('/me', async (req: Request, res: Response) => {
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Not authenticated' });
+  }
+
+  // If user is admin, refresh credits from real KIE account total
+  if (user.role === 'admin' || user.email.toLowerCase() === 'altamedia51@gmail.com') {
+    const realCredits = await getRealAdminKieCredits();
+    if (user.credits !== realCredits) {
+      user.credits = realCredits;
+      await dbStore.upsertUser(user);
+    }
   }
 
   const jobs = await dbStore.getUserJobs(user.id);

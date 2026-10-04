@@ -313,6 +313,65 @@ export class KieSunoProvider implements MusicProvider {
       };
     }
   }
+
+  /**
+   * Queries real-time credit balance from KIE.ai
+   * Endpoint: GET https://api.kie.ai/api/v1/chat/credit
+   */
+  async getAccountCredits(apiKey: string): Promise<{ success: boolean; credits: number; message?: string }> {
+    if (!apiKey || !apiKey.trim()) {
+      return { success: false, credits: 0, message: 'API key is empty' };
+    }
+
+    try {
+      const url = `${this.baseUrl}/chat/credit`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!res.ok) {
+        return {
+          success: false,
+          credits: 0,
+          message: `HTTP ${res.status} from KIE Credit API`
+        };
+      }
+
+      const json = await res.json();
+      console.log('[KieSunoProvider] Credit balance response from KIE.ai:', json);
+
+      // KIE returns { code: 200, msg: "success", data: 150 }
+      if (json && (typeof json.data === 'number' || (!isNaN(Number(json.data)) && json.data !== null))) {
+        return {
+          success: true,
+          credits: Number(json.data)
+        };
+      }
+
+      const alt = json?.credits ?? json?.data?.credits ?? json?.data?.balance ?? json?.balance;
+      if (typeof alt === 'number' || (alt !== undefined && !isNaN(Number(alt)))) {
+        return {
+          success: true,
+          credits: Number(alt)
+        };
+      }
+
+      return {
+        success: true,
+        credits: 0
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        credits: 0,
+        message: err.message
+      };
+    }
+  }
 }
 
 export const kieSunoProvider = new KieSunoProvider();
