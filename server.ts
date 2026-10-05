@@ -107,11 +107,19 @@ async function startServer() {
   });
 }
 
-// In Vercel serverless functions, the app is exported rather than started with app.listen
-if (process.env.VERCEL !== '1') {
+// In Vercel and serverless environments, the app is exported rather than started with app.listen
+const isServerless = Boolean(
+  process.env.VERCEL || 
+  process.env.VERCEL_ENV || 
+  process.env.AWS_LAMBDA_FUNCTION_NAME || 
+  process.env.NOW_REGION || 
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.VERCEL_REGION
+);
+
+if (!isServerless && process.env.NODE_ENV !== 'test') {
   startServer().catch(err => {
     console.error('[Sonic Hub AI] Failed to start server:', err);
-    process.exit(1);
   });
 }
 

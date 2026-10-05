@@ -374,7 +374,7 @@ class DatabaseStore {
     this.jobs.set(job.id, job);
     if (this.firestoreDb) {
       try {
-        await setDoc(doc(this.firestoreDb, 'generation_jobs', job.id), job);
+        await withTimeout(setDoc(doc(this.firestoreDb, 'generation_jobs', job.id), job), 1500);
       } catch (e) {
         console.warn('[DB] Firestore createJob fallback:', (e as Error).message);
       }
@@ -387,7 +387,7 @@ class DatabaseStore {
     if (mem) return mem;
     if (this.firestoreDb) {
       try {
-        const snap = await getDoc(doc(this.firestoreDb, 'generation_jobs', id));
+        const snap = await withTimeout(getDoc(doc(this.firestoreDb, 'generation_jobs', id)), 1500);
         if (snap.exists()) {
           const j = snap.data() as GenerationJobDoc;
           this.jobs.set(j.id, j);
@@ -405,7 +405,7 @@ class DatabaseStore {
     if (this.firestoreDb) {
       try {
         const q = query(collection(this.firestoreDb, 'generation_jobs'), where('taskId', '==', taskId), limit(1));
-        const snap = await getDocs(q);
+        const snap = await withTimeout(getDocs(q), 1500);
         if (!snap.empty) {
           const j = snap.docs[0].data() as GenerationJobDoc;
           this.jobs.set(j.id, j);
@@ -423,7 +423,7 @@ class DatabaseStore {
     this.jobs.set(id, updated);
     if (this.firestoreDb) {
       try {
-        await setDoc(doc(this.firestoreDb, 'generation_jobs', id), updated, { merge: true });
+        await withTimeout(setDoc(doc(this.firestoreDb, 'generation_jobs', id), updated, { merge: true }), 1500);
       } catch (e) {}
     }
     return updated;
@@ -436,7 +436,7 @@ class DatabaseStore {
           collection(this.firestoreDb, 'generation_jobs'),
           where('userId', '==', userId)
         );
-        const snap = await getDocs(q);
+        const snap = await withTimeout(getDocs(q), 1500);
         for (const d of snap.docs) {
           const j = d.data() as GenerationJobDoc;
           this.jobs.set(j.id, j);
@@ -551,7 +551,7 @@ class DatabaseStore {
   async getSettings(): Promise<AppSettingsDoc> {
     if (this.firestoreDb) {
       try {
-        const snap = await getDoc(doc(this.firestoreDb, 'app_settings', 'global'));
+        const snap = await withTimeout(getDoc(doc(this.firestoreDb, 'app_settings', 'global')), 1500);
         if (snap.exists()) {
           this.settings = { ...this.settings, ...(snap.data() as AppSettingsDoc) };
         }
@@ -564,7 +564,7 @@ class DatabaseStore {
     this.settings = { ...this.settings, ...updates, updatedAt: new Date().toISOString() };
     if (this.firestoreDb) {
       try {
-        await setDoc(doc(this.firestoreDb, 'app_settings', 'global'), this.settings, { merge: true });
+        await withTimeout(setDoc(doc(this.firestoreDb, 'app_settings', 'global'), this.settings, { merge: true }), 1500);
       } catch (e) {}
     }
     return { ...this.settings };

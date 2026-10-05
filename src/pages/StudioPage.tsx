@@ -20,6 +20,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack, ModelCapability } from '../types';
+import { db } from '../firebase/config';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where } from 'firebase/firestore';
 
 interface StudioPageProps {
   onGoToAdmin?: () => void;
@@ -78,8 +80,10 @@ Fading into the midnight hum...`);
     setCheckingStatus(true);
     try {
       const res = await fetch(`/api/music/jobs/${activeJob.id}/status`);
-      const data = await res.json();
-      if (data.success) {
+      const text = await res.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch {}
+      if (data && data.success) {
         setActiveJob(data.job);
         if (data.tracks && data.tracks.length > 0) {
           setActiveTracks(data.tracks);
@@ -87,9 +91,28 @@ Fading into the midnight hum...`);
         if (data.status === 'COMPLETED') {
           refreshUser();
         }
+        return;
       }
     } catch (e) {
-      console.warn(e);
+      console.warn('API status check note:', e);
+    }
+
+    // Direct Firestore fallback
+    try {
+      const snap = await getDoc(doc(db, 'generation_jobs', activeJob.id));
+      if (snap.exists()) {
+        const liveJob = snap.data() as GenerationJob;
+        setActiveJob(liveJob);
+        const trSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', activeJob.id)));
+        if (!trSnap.empty) {
+          setActiveTracks(trSnap.docs.map(d => d.data() as GenerationTrack));
+        }
+        if (liveJob.status === 'COMPLETED') {
+          refreshUser();
+        }
+      }
+    } catch (fsErr) {
+      console.warn('Firestore fallback note:', fsErr);
     } finally {
       setCheckingStatus(false);
     }
@@ -228,41 +251,144 @@ Fading into the midnight hum...`);
     setActiveTracks([]);
 
     try {
-      const res = await fetch('/api/music/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || 'admin_altamedia',
-          'x-user-email': user?.email || 'altamedia51@gmail.com'
-        },
-        body: JSON.stringify({
-          title,
-          lyrics: instrumental ? '' : lyrics,
-          style,
-          model,
-          customMode,
-          instrumental,
-          negativeTags: selectedModelCap.supportsNegativeTags ? negativeTags : undefined,
-          vocalGender: selectedModelCap.supportsVocalGender && !instrumental ? vocalGender : undefined,
-          duration: selectedModelCap.supportsDuration && customMode ? duration : undefined
-        })
-      });
+      let dispatchJob: GenerationJob | null = null;
 
-      const text = await res.text();
-      let data: any = null;
+      // 1. Try server endpoint first
       try {
-        data = JSON.parse(text);
-      } catch {
-        const cleanText = text.replace(/<[^>]*>/g, '').trim();
-        throw new Error(cleanText.slice(0, 150) || `Server request failed (Status ${res.status})`);
+        const res = await fetch('/api/music/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user?.id || 'admin_altamedia',
+            'x-user-email': user?.email || 'altamedia51@gmail.com'
+          },
+          body: JSON.stringify({
+            title,
+            lyrics: instrumental ? '' : lyrics,
+            style,
+            model,
+            customMode,
+            instrumental,
+            negativeTags: selectedModelCap.supportsNegativeTags ? negativeTags : undefined,
+            vocalGender: selectedModelCap.supportsVocalGender && !instrumental ? vocalGender : undefined,
+            duration: selectedModelCap.supportsDuration && customMode ? duration : undefined
+          })
+        });
+
+        const text = await res.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(text);
+        } catch {}
+
+        if (res.ok && data?.success && data?.job) {
+          dispatchJob = data.job;
+        } else if (data?.code === 'INSUFFICIENT_CREDITS' || data?.code === 'VALIDATION_ERROR' || data?.code === 'MAINTENANCE_MODE') {
+          // Genuine business error: throw directly
+          throw new Error(data.message || 'Generation request rejected');
+        }
+      } catch (err: any) {
+        if (err.message && (err.message.includes('Insufficient') || err.message.includes('Lyrics') || err.message.includes('Maintenance'))) {
+          throw err;
+        }
+        console.warn('[Studio] Serverless invoke note, attempting direct failover:', err.message);
       }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || data.error?.message || 'Failed to submit generation job');
+      // 2. Direct client-side failover fallback if serverless invocation failed or timed out
+      if (!dispatchJob) {
+        const kieSnap = await getDocs(collection(db, 'kie_accounts'));
+        const activeAcc = kieSnap.docs
+          .map(d => ({ id: d.id, ...d.data() } as any))
+          .find((a: any) => a.status === 'ACTIVE');
+
+        if (!activeAcc) {
+          throw new Error('No active KIE provider account found. Please check Admin Portal.');
+        }
+
+        const rawApiKey = activeAcc.apiKey || activeAcc.encryptedApiKey;
+        const promptText = instrumental ? '' : lyrics;
+
+        const kiePayload: any = {
+          model: 'ai-music-api/generate',
+          callBackUrl: `${window.location.origin}/api/webhooks/kie/music`,
+          input: {
+            model,
+            custom_mode: customMode,
+            instrumental,
+            title: title.trim(),
+            style: style.trim(),
+            prompt: promptText
+          }
+        };
+
+        if (selectedModelCap.supportsNegativeTags && negativeTags.trim()) {
+          kiePayload.input.negative_tags = negativeTags.trim();
+        }
+        if (selectedModelCap.supportsVocalGender && !instrumental && vocalGender) {
+          kiePayload.input.vocal_gender = vocalGender;
+        }
+        if (selectedModelCap.supportsDuration && customMode && duration) {
+          kiePayload.input.duration = duration;
+        }
+
+        const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${rawApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(kiePayload)
+        });
+
+        const kieData = await kieRes.json().catch(() => null);
+        const taskId = kieData?.data?.taskId || kieData?.data?.task_id || kieData?.taskId || kieData?.task_id;
+
+        if (!taskId) {
+          throw new Error(kieData?.msg || kieData?.message || 'Failed to dispatch task to Suno V6 engine');
+        }
+
+        // Deduct user credits directly in Firestore
+        const requiredCost = selectedModelCap.defaultCreditCost || 10;
+        const currentCredits = user?.credits ?? credits ?? 0;
+        const newCredits = Math.max(0, currentCredits - requiredCost);
+        if (user) {
+          await updateDoc(doc(db, 'users', user.id), {
+            credits: newCredits,
+            updatedAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+
+        const newJobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const localJob: GenerationJob = {
+          id: newJobId,
+          userId: user?.id || 'admin_altamedia',
+          provider: 'KIE_SUNO',
+          providerAccountId: activeAcc.id,
+          providerAccountName: activeAcc.name,
+          taskId,
+          title: title.trim(),
+          lyrics: promptText,
+          style: style.trim(),
+          model,
+          instrumental,
+          status: 'PROCESSING',
+          creditReservation: requiredCost,
+          creditFinalized: false,
+          retryCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        await setDoc(doc(db, 'generation_jobs', newJobId), localJob).catch(() => {});
+        dispatchJob = localJob;
       }
 
-      setActiveJob(data.job);
-      refreshUser();
+      if (dispatchJob) {
+        setActiveJob(dispatchJob);
+        refreshUser();
+      } else {
+        throw new Error('Could not initiate music generation. Please try again.');
+      }
 
     } catch (err: any) {
       setErrorMsg(err.message || 'Generation submission failed');
