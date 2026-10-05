@@ -17,6 +17,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
+import { db } from '../firebase/config';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 interface LibraryItem {
   job: GenerationJob;
@@ -43,14 +45,51 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
           'x-user-email': user?.email || ''
         }
       });
-      const data = await res.json();
-      if (data.success) {
-        if (Array.isArray(data.items)) {
-          setItems(data.items);
-        }
+      const data = await res.json().catch(() => null);
+      if (data?.success && Array.isArray(data.items) && data.items.length > 0) {
+        setItems(data.items);
         if (Array.isArray(data.activeJobs)) {
           setActiveJobs(data.activeJobs);
         }
+        return;
+      }
+
+      // Direct Firestore Fallback
+      try {
+        const uId = user?.id || 'usr_altamedia51_gmail_com';
+        const jobsSnap = await getDocs(query(
+          collection(db, 'generation_jobs'),
+          where('userId', '==', uId),
+          orderBy('createdAt', 'desc')
+        )).catch(async () => {
+          // Fallback query without orderBy if composite index is pending
+          return await getDocs(query(collection(db, 'generation_jobs'), where('userId', '==', uId)));
+        });
+
+        if (jobsSnap && !jobsSnap.empty) {
+          const userJobs = jobsSnap.docs
+            .map(d => ({ id: d.id, ...d.data() } as GenerationJob))
+            .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+          const trSnap = await getDocs(query(collection(db, 'generation_tracks'), where('userId', '==', uId)));
+          const trackMap = new Map<string, GenerationTrack[]>();
+          trSnap.docs.forEach(d => {
+            const trk = { id: d.id, ...d.data() } as GenerationTrack;
+            const list = trackMap.get(trk.jobId) || [];
+            list.push(trk);
+            trackMap.set(trk.jobId, list);
+          });
+
+          const libItems: LibraryItem[] = userJobs.map(job => ({
+            job,
+            tracks: trackMap.get(job.id) || []
+          }));
+
+          setItems(libItems);
+          setActiveJobs(userJobs.filter(j => j.status === 'QUEUED' || j.status === 'SUBMITTING' || j.status === 'PROCESSING'));
+        }
+      } catch (fsErr) {
+        console.warn('Firestore library fallback error:', fsErr);
       }
     } catch (e) {
       console.warn('Failed to load library:', e);

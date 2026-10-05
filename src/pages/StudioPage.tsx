@@ -21,7 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack, ModelCapability } from '../types';
 import { db } from '../firebase/config';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
 
 interface StudioPageProps {
   onGoToAdmin?: () => void;
@@ -84,31 +84,84 @@ Fading into the midnight hum...`);
       let data: any = null;
       try { data = JSON.parse(text); } catch {}
       if (data && data.success) {
-        setActiveJob(data.job);
+        if (data.job) setActiveJob(data.job);
         if (data.tracks && data.tracks.length > 0) {
           setActiveTracks(data.tracks);
+          if (data.status === 'COMPLETED') refreshUser();
+          setCheckingStatus(false);
+          return;
         }
-        if (data.status === 'COMPLETED') {
-          refreshUser();
-        }
-        return;
       }
     } catch (e) {
       console.warn('API status check note:', e);
     }
 
-    // Direct Firestore fallback
+    // Direct Firestore and KIE recovery fallback
     try {
       const snap = await getDoc(doc(db, 'generation_jobs', activeJob.id));
       if (snap.exists()) {
-        const liveJob = snap.data() as GenerationJob;
+        const liveJob = { id: snap.id, ...snap.data() } as GenerationJob;
         setActiveJob(liveJob);
         const trSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', activeJob.id)));
         if (!trSnap.empty) {
-          setActiveTracks(trSnap.docs.map(d => d.data() as GenerationTrack));
+          setActiveTracks(trSnap.docs.map(d => ({ id: d.id, ...d.data() } as GenerationTrack)));
+          if (liveJob.status === 'COMPLETED') refreshUser();
+          setCheckingStatus(false);
+          return;
         }
-        if (liveJob.status === 'COMPLETED') {
-          refreshUser();
+
+        // If tracks are still 0 and taskId exists, attempt direct KIE retrieval
+        if (liveJob.taskId) {
+          const accSnap = await getDocs(collection(db, 'kie_accounts'));
+          const accs = accSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const activeAcc = accs.find(a => a.id === liveJob.providerAccountId) || 
+                            accs.find(a => a.status === 'ACTIVE' && (a.apiKey || a.encryptedApiKey)) || 
+                            accs[0];
+          const kKey = (activeAcc?.apiKey || activeAcc?.encryptedApiKey || '').replace(/^Bearer\s+/i, '').trim();
+
+          if (kKey) {
+            const kRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${liveJob.taskId}`, {
+              headers: { 'Authorization': `Bearer ${kKey}` }
+            }).catch(() => null);
+
+            if (kRes && kRes.ok) {
+              const kJson = await kRes.json();
+              const jData = kJson?.data || kJson;
+              let rawTracks: any[] = [];
+              if (Array.isArray(jData?.data)) rawTracks = jData.data;
+              else if (Array.isArray(jData?.response?.data)) rawTracks = jData.response.data;
+              else if (Array.isArray(jData?.tracks)) rawTracks = jData.tracks;
+
+              const recovered: GenerationTrack[] = [];
+              for (const t of rawTracks) {
+                const aUrl = t.audio_url || t.stream_audio_url || t.audioUrl;
+                if (aUrl) {
+                  const newTrk: GenerationTrack = {
+                    id: `trk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    jobId: liveJob.id,
+                    userId: liveJob.userId,
+                    providerTrackId: t.id || `prov_${Date.now()}`,
+                    audioUrl: aUrl,
+                    streamAudioUrl: t.stream_audio_url || aUrl,
+                    imageUrl: t.image_url || t.imageUrl,
+                    prompt: t.prompt || liveJob.lyrics,
+                    modelName: t.model_name || liveJob.model,
+                    title: t.title || liveJob.title,
+                    tags: t.tags || liveJob.style,
+                    duration: t.duration,
+                    createdAt: new Date().toISOString()
+                  };
+                  await addDoc(collection(db, 'generation_tracks'), newTrk).catch(() => null);
+                  recovered.push(newTrk);
+                }
+              }
+
+              if (recovered.length > 0) {
+                setActiveTracks(recovered);
+                refreshUser();
+              }
+            }
+          }
         }
       }
     } catch (fsErr) {
@@ -643,9 +696,10 @@ Fading into the midnight hum...`);
           </div>
 
           {/* Generated Tracks Results Display */}
-          {activeTracks.length > 0 && (
+          {activeTracks.length > 0 ? (
             <div className="mt-4 pt-4 border-t border-zinc-800">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-3 flex items-center gap-2">
+                <Music className="w-4 h-4 text-emerald-400" />
                 Generated Audio Variations ({activeTracks.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -718,7 +772,25 @@ Fading into the midnight hum...`);
                 ))}
               </div>
             </div>
-          )}
+          ) : activeJob.status === 'COMPLETED' ? (
+            <div className="mt-4 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl bg-zinc-950/60 border border-zinc-800">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-4 h-4 text-amber-400 animate-spin flex-shrink-0" />
+                <span className="text-xs text-zinc-300 font-medium">
+                  Audio variations generated successfully! Finalizing download links...
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={checkCurrentStatus}
+                disabled={checkingStatus}
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition flex-shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                Show Songs Now
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 
