@@ -299,7 +299,8 @@ Fading into the midnight hum...`);
         const kieSnap = await getDocs(collection(db, 'kie_accounts'));
         const activeAcc = kieSnap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
-          .find((a: any) => a.status === 'ACTIVE');
+          .filter((a: any) => a.status === 'ACTIVE' && (a.apiKey || a.encryptedApiKey))
+          .sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.credits || 0) - (a.credits || 0))[0];
 
         if (!activeAcc) {
           throw new Error('No active KIE provider account found. Please check Admin Portal.');
