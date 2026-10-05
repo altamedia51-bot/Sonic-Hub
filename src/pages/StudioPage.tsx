@@ -248,10 +248,17 @@ Fading into the midnight hum...`);
         })
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const cleanText = text.replace(/<[^>]*>/g, '').trim();
+        throw new Error(cleanText.slice(0, 150) || `Server request failed (Status ${res.status})`);
+      }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Failed to submit generation job');
+        throw new Error(data.message || data.error?.message || 'Failed to submit generation job');
       }
 
       setActiveJob(data.job);

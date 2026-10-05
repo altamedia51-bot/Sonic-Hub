@@ -234,14 +234,11 @@ class DatabaseStore {
   // --- Users ---
   async getUser(idOrEmail: string): Promise<UserDoc | null> {
     const key = idOrEmail.toLowerCase();
-    for (const u of this.users.values()) {
-      if (u.id === idOrEmail || u.email.toLowerCase() === key) {
-        return u;
-      }
-    }
+
+    // 1. Always prioritize live Google Cloud Firestore document to fetch updated credits
     if (this.firestoreDb) {
       try {
-        // Try direct document ID lookup with timeout
+        // Try direct document ID lookup
         const docRef = doc(this.firestoreDb, 'users', idOrEmail);
         const snap = await withTimeout(getDoc(docRef), 2000);
         if (snap.exists()) {
@@ -251,7 +248,7 @@ class DatabaseStore {
           return user;
         }
 
-        // Try lookup by email field with timeout
+        // Try lookup by email field
         const q = query(
           collection(this.firestoreDb, 'users'),
           where('email', '==', key),
@@ -266,6 +263,13 @@ class DatabaseStore {
         }
       } catch (e) {
         console.warn('[DB] Firestore getUser lookup note:', (e as Error).message);
+      }
+    }
+
+    // 2. Fallback to in-memory cache
+    for (const u of this.users.values()) {
+      if (u.id === idOrEmail || u.email.toLowerCase() === key) {
+        return u;
       }
     }
     return null;

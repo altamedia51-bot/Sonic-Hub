@@ -28,7 +28,7 @@ async function authenticateUser(req: Request) {
   const userIdHeader = (req.headers['x-user-id'] as string) || '';
   const userEmailHeader = (req.headers['x-user-email'] as string) || '';
 
-  // In local/production, verify user against DB
+  // In local/production, verify user against DB / Firestore
   let user = null;
   if (userIdHeader) {
     user = await dbStore.getUser(userIdHeader);
@@ -41,8 +41,37 @@ async function authenticateUser(req: Request) {
   }
 
   // Fallback: If anonymous or first turn, check if altamedia admin exists
-  if (!user && (userEmailHeader === 'altamedia51@gmail.com' || !userIdHeader)) {
+  if (!user && (userEmailHeader.toLowerCase() === 'altamedia51@gmail.com' || !userIdHeader)) {
     user = await dbStore.getUser('altamedia51@gmail.com');
+  }
+
+  // Auto-sync user if headers provided but document was missing
+  if (!user && (userEmailHeader || userIdHeader)) {
+    const email = (userEmailHeader || 'user@sonichub.ai').toLowerCase();
+    const uid = userIdHeader || `usr_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const isSystemAdmin = email === 'altamedia51@gmail.com';
+    const settings = await dbStore.getSettings();
+    user = await dbStore.upsertUser({
+      id: uid,
+      email,
+      name: email.split('@')[0],
+      role: isSystemAdmin ? 'admin' : 'user',
+      status: 'active',
+      credits: isSystemAdmin ? 1000 : settings.defaultUserCredit,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  // If user is system admin, ensure their credits reflect active KIE accounts if available
+  if (user && user.email.toLowerCase() === 'altamedia51@gmail.com') {
+    const accounts = await dbStore.getKieAccounts();
+    const active = accounts.filter(a => a.status === 'ACTIVE');
+    const totalKie = active.reduce((sum, a) => sum + (a.credits || 0), 0);
+    if (totalKie > 0 && user.credits < 10) {
+      user.credits = totalKie;
+      await dbStore.upsertUser(user);
+    }
   }
 
   return user;

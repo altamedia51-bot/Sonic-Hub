@@ -40,6 +40,15 @@ app.get('/favicon.ico', (_req, res) => {
   res.redirect(301, '/favicon.svg');
 });
 
+// Normalize Vercel rewritten paths
+app.use((req, _res, next) => {
+  const matchedPath = req.headers['x-matched-path'] as string;
+  if (matchedPath && matchedPath.startsWith('/api') && req.url !== matchedPath) {
+    req.url = matchedPath;
+  }
+  next();
+});
+
 // Mount API routes (supports both /api/* and direct prefix in case Vercel rewrites strip /api)
 app.use('/api/music', musicRouter);
 app.use('/music', musicRouter);
@@ -52,6 +61,27 @@ app.use('/admin', adminRouter);
 
 app.use('/api/auth', authRouter);
 app.use('/auth', authRouter);
+
+// JSON 404 handler for API routes
+app.all(['/api', '/api/*'], (req, res) => {
+  res.status(404).json({
+    success: false,
+    code: 'NOT_FOUND',
+    message: `API route not found: ${req.method} ${req.originalUrl || req.url}`
+  });
+});
+
+// Global Express error handler: ensures server NEVER responds with HTML error pages to API callers
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Sonic Hub Server Error]', err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      code: err.code || 'INTERNAL_SERVER_ERROR',
+      message: err.message || 'An unexpected server error occurred'
+    });
+  }
+});
 
 // Frontend Vite integration
 async function startServer() {
