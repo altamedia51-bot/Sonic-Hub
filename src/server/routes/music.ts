@@ -121,6 +121,9 @@ musicRouter.post('/create', async (req: Request, res: Response) => {
       });
     }
 
+    const KIE_DURATION_SUPPORTED_MODELS = new Set(['V5_5', 'V6', 'V6_WILD', 'V6_MINI']);
+    const sanitizedDuration = (KIE_DURATION_SUPPORTED_MODELS.has(model) && customMode) ? duration : undefined;
+
     // Submit job via JobQueueService
     const result = await jobQueueService.submitJob({
       userId: user.id,
@@ -132,7 +135,7 @@ musicRouter.post('/create', async (req: Request, res: Response) => {
       instrumental,
       negativeTags,
       vocalGender,
-      duration
+      duration: sanitizedDuration
     });
 
     if (!result.success) {

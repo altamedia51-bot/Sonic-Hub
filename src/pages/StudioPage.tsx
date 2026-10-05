@@ -168,16 +168,27 @@ Fading into the midnight hum...`);
     }
   }, [user]);
 
+  // Models that strictly support target duration parameter in KIE.ai Suno API
+  const isDurationSupported = customMode && (model === 'V6' || model === 'V6_MINI' || model === 'V6_WILD' || model === 'V5_5');
+
   // Selected Model Capabilities
-  const selectedModelCap = models.find(m => m.id === model) || {
-    id: 'V6',
-    name: 'Suno V6',
-    supportsDuration: true,
+  const foundModel = models.find(m => m.id === model);
+  const selectedModelCap: ModelCapability = foundModel ? {
+    ...foundModel,
+    supportsDuration: isDurationSupported
+  } : {
+    id: model,
+    name: model === 'V4_5' ? 'Suno V4.5' : model,
+    description: '',
+    supportsDuration: isDurationSupported,
     minDuration: 10,
     maxDuration: 360,
-    supportsVocalGender: true,
-    supportsNegativeTags: true,
-    defaultCreditCost: 10
+    supportsVocalGender: model !== 'V4_5' && model !== 'V4',
+    supportsNegativeTags: model !== 'V4_5' && model !== 'V4' && model !== 'V5',
+    maxPromptLength: 3000,
+    maxStyleLength: 400,
+    defaultCreditCost: model.startsWith('V6') ? 10 : 8,
+    enabled: true
   };
 
   // Poll for job status updates when a job is active
@@ -271,7 +282,7 @@ Fading into the midnight hum...`);
             instrumental,
             negativeTags: selectedModelCap.supportsNegativeTags ? negativeTags : undefined,
             vocalGender: selectedModelCap.supportsVocalGender && !instrumental ? vocalGender : undefined,
-            duration: selectedModelCap.supportsDuration && customMode ? duration : undefined
+            duration: isDurationSupported ? duration : undefined
           })
         });
 
@@ -334,7 +345,7 @@ Fading into the midnight hum...`);
         if (selectedModelCap.supportsVocalGender && !instrumental && vocalGender) {
           kiePayload.input.vocal_gender = vocalGender;
         }
-        if (selectedModelCap.supportsDuration && customMode && duration) {
+        if (isDurationSupported && duration) {
           kiePayload.input.duration = duration;
         }
 

@@ -48,9 +48,12 @@ export class KieSunoProvider implements MusicProvider {
       requestInput.vocal_gender = input.vocalGender; // 'm' or 'f'
     }
 
-    // Include duration only if provided and supported (e.g. V6, V6_MINI, V6_WILD)
-    if (input.duration && modelCap.supportsDuration && input.customMode) {
-      const clamped = Math.max(modelCap.minDuration, Math.min(modelCap.maxDuration, Math.round(input.duration)));
+    // Include duration strictly only if custom_mode is true AND model is V5_5, V6, V6_WILD or V6_MINI
+    const KIE_DURATION_SUPPORTED_MODELS = new Set(['V5_5', 'V6', 'V6_WILD', 'V6_MINI']);
+    if (input.duration && input.customMode && KIE_DURATION_SUPPORTED_MODELS.has(input.model)) {
+      const minD = modelCap.minDuration || 10;
+      const maxD = modelCap.maxDuration || 360;
+      const clamped = Math.max(minD, Math.min(maxD, Math.round(input.duration)));
       requestInput.duration = clamped;
     }
 
