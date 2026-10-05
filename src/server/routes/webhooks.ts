@@ -92,14 +92,30 @@ webhookRouter.post('/kie/music', async (req: Request, res: Response) => {
       return res.status(200).json({ success: true, message: 'Text stage acknowledged' });
     }
 
-    // Extract tracks
-    const tracksList = rawData.data || rawData.tracks || (Array.isArray(rawData) ? rawData : []);
+    // Extract tracks from all possible KIE callback structures
+    const tracksList = 
+      rawData.response?.data ||
+      rawData.data?.response?.data ||
+      payload.response?.data ||
+      rawData.data || 
+      rawData.tracks || 
+      (Array.isArray(rawData) ? rawData : []);
     const validTracks: any[] = [];
 
     if (Array.isArray(tracksList)) {
       for (const item of tracksList) {
-        if (item?.audio_url || item?.stream_audio_url) {
-          validTracks.push(item);
+        if (item?.audio_url || item?.stream_audio_url || item?.audioUrl || item?.streamAudioUrl) {
+          validTracks.push({
+            ...item,
+            audio_url: item.audio_url || item.audioUrl,
+            stream_audio_url: item.stream_audio_url || item.streamAudioUrl || item.audio_url || item.audioUrl,
+            image_url: item.image_url || item.imageUrl || item.image_large_url,
+            prompt: item.prompt || job.lyrics,
+            model_name: item.model_name || item.model || job.model,
+            title: item.title || job.title,
+            tags: item.tags || job.style,
+            duration: item.duration
+          });
         }
       }
     }

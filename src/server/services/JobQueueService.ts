@@ -181,8 +181,16 @@ export class JobQueueService {
     const job = await dbStore.getJob(jobId);
     if (!job) return null;
 
-    // If job is still PROCESSING, SUBMITTING or PARTIAL and has a taskId, check with KIE
-    if ((job.status === 'PROCESSING' || job.status === 'SUBMITTING' || job.status === 'PARTIAL') && job.taskId) {
+    // If job is still PROCESSING, SUBMITTING, PARTIAL or has 0 tracks saved, check with KIE
+    const currentTracks = await dbStore.getTracksForJob(job.id);
+    const needsFetch = job.taskId && (
+      job.status === 'PROCESSING' || 
+      job.status === 'SUBMITTING' || 
+      job.status === 'PARTIAL' || 
+      (job.status === 'COMPLETED' && currentTracks.length === 0)
+    );
+
+    if (needsFetch && job.taskId) {
       let account = job.providerAccountId ? await dbStore.getKieAccount(job.providerAccountId) : null;
       if (!account) {
         const allAccounts = await dbStore.getKieAccounts();

@@ -200,9 +200,9 @@ Fading into the midnight hum...`);
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/music/jobs/${activeJob.id}/status`);
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
 
-        if (data.success) {
+        if (data?.success) {
           setActiveJob(data.job);
           if (data.tracks && data.tracks.length > 0) {
             setActiveTracks(data.tracks);
@@ -211,9 +211,32 @@ Fading into the midnight hum...`);
           if (data.status === 'COMPLETED') {
             clearInterval(interval);
             refreshUser();
+            return;
           } else if (data.status === 'FAILED') {
             clearInterval(interval);
             setErrorMsg(data.error || 'Music generation failed. Please try again.');
+            setRefundNotif('Credits have been automatically refunded to your balance.');
+            refreshUser();
+            return;
+          }
+        }
+
+        // Direct client Firestore fallback check
+        const jobSnap = await getDoc(doc(db, 'generation_jobs', activeJob.id)).catch(() => null);
+        if (jobSnap?.exists()) {
+          const jData = { id: jobSnap.id, ...jobSnap.data() } as GenerationJob;
+          setActiveJob(jData);
+          const tracksSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', activeJob.id))).catch(() => null);
+          if (tracksSnap && !tracksSnap.empty) {
+            const trks = tracksSnap.docs.map(d => ({ id: d.id, ...d.data() } as GenerationTrack));
+            setActiveTracks(trks);
+          }
+          if (jData.status === 'COMPLETED') {
+            clearInterval(interval);
+            refreshUser();
+          } else if (jData.status === 'FAILED') {
+            clearInterval(interval);
+            setErrorMsg(jData.errorMessage || 'Music generation failed. Please try again.');
             setRefundNotif('Credits have been automatically refunded to your balance.');
             refreshUser();
           }
