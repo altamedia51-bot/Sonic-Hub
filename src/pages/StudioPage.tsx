@@ -22,6 +22,7 @@ import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack, ModelCapability } from '../types';
 import { db } from '../firebase/config';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
+import { downloadAudioFile } from '../utils/download';
 
 interface StudioPageProps {
   onGoToAdmin?: () => void;
@@ -816,13 +817,14 @@ Fading into the midnight hum...`);
                         )}
                       </button>
 
-                      <a
-                        href={`/api/music/download?url=${encodeURIComponent(trk.audioUrl)}&filename=${encodeURIComponent((trk.title || 'sonic-hub') + '.mp3')}`}
-                        className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+                      <button
+                        type="button"
+                        onClick={() => downloadAudioFile(trk.audioUrl, trk.title || activeJob?.title || 'sonic-hub')}
+                        className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition"
                         title="Download MP3"
                       >
                         <Download className="w-4 h-4" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 ))}

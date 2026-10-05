@@ -287,24 +287,15 @@ musicRouter.get('/models', async (_req: Request, res: Response) => {
 // GET /api/music/download?url=...
 musicRouter.get('/download', async (req: Request, res: Response) => {
   const fileUrl = req.query.url as string;
-  const fileName = (req.query.filename as string) || 'sonic-hub-track.mp3';
 
   if (!fileUrl) {
     return res.status(400).send('Missing audio URL parameter');
   }
 
   try {
-    const response = await fetch(fileUrl);
-    if (!response.ok) {
-      return res.status(response.status).send('Failed to fetch remote audio file');
-    }
-
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'audio/mpeg');
-
-    const arrayBuffer = await response.arrayBuffer();
-    return res.send(Buffer.from(arrayBuffer));
+    // Perform instant 302 redirect to avoid buffer limits on Vercel serverless functions
+    return res.redirect(302, fileUrl);
   } catch (err: any) {
-    return res.status(500).send(`Download failed: ${err.message}`);
+    return res.redirect(fileUrl);
   }
 });

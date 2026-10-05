@@ -19,6 +19,7 @@ import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
 import { db } from '../firebase/config';
 import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { downloadAudioFile } from '../utils/download';
 
 interface LibraryItem {
   job: GenerationJob;
@@ -342,13 +343,14 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                               {Math.round(t.duration)}s
                             </span>
                           )}
-                          <a
-                            href={`/api/music/download?url=${encodeURIComponent(t.audioUrl)}&filename=${encodeURIComponent((t.title || job.title) + '.mp3')}`}
-                            className="p-1 text-zinc-400 hover:text-white"
+                          <button
+                            type="button"
+                            onClick={() => downloadAudioFile(t.audioUrl, t.title || job.title)}
+                            className="p-1 text-zinc-400 hover:text-white transition"
                             title="Download track"
                           >
                             <Download className="w-3.5 h-3.5" />
-                          </a>
+                          </button>
                         </div>
                       </div>
                     ))}

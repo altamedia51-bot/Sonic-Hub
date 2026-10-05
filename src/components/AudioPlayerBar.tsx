@@ -11,6 +11,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
+import { downloadAudioFile } from '../utils/download';
 
 export const AudioPlayerBar: React.FC = () => {
   const { 
@@ -35,13 +36,7 @@ export const AudioPlayerBar: React.FC = () => {
 
   const handleDownload = () => {
     if (!audioSrc) return;
-    const downloadUrl = `/api/music/download?url=${encodeURIComponent(audioSrc)}&filename=${encodeURIComponent((currentTrack.title || 'sonic-hub-track') + '.mp3')}`;
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `${currentTrack.title || 'sonic-hub-track'}.mp3`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadAudioFile(audioSrc, currentTrack.title || currentJob?.title || 'sonic-hub-track');
   };
 
   return (
