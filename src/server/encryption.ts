@@ -54,7 +54,7 @@ const CANDIDATE_SECRETS: string[] = [
 /**
  * Decrypts an encrypted KIE API key string.
  */
-export function decryptApiKey(cipherTextBase64: string): string {
+export function decryptApiKey(cipherTextBase64?: string): string {
   if (!cipherTextBase64) return '';
   const trimmed = cipherTextBase64.trim();
 

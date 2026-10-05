@@ -60,21 +60,27 @@ export class KieAccountManager {
 
     const chosen = eligible[0];
 
-    // Decrypt key server-side
+    // Priority: use direct plain apiKey if present, or decrypt encryptedApiKey
+    let keyToUse = chosen.apiKey || chosen.encryptedApiKey || '';
+    let decryptedKey = '';
     try {
-      const decryptedKey = decryptApiKey(chosen.encryptedApiKey);
-      return { account: chosen, decryptedKey };
-    } catch (e: any) {
-      console.error(`[KieAccountManager] Decryption failed for account ${chosen.id}:`, e.message);
-      await dbStore.upsertKieAccount({
-        ...chosen,
-        status: 'ERROR',
-        lastError: `Decryption error: ${e.message}`,
-        failureCount: chosen.failureCount + 1
-      });
-      // Try next
+      decryptedKey = decryptApiKey(keyToUse);
+    } catch {
+      decryptedKey = keyToUse;
+    }
+
+    // Sanitize any Bearer prefixes, quotes, extra whitespace
+    const cleanKey = decryptedKey
+      .replace(/^Bearer\s+/i, '')
+      .replace(/^["']|["']$/g, '')
+      .trim();
+
+    if (!cleanKey) {
+      console.warn(`[KieAccountManager] No valid API key found for account ${chosen.id}`);
       return this.getAvailableAccount([...excludedAccountIds, chosen.id]);
     }
+
+    return { account: chosen, decryptedKey: cleanKey };
   }
 
   /**

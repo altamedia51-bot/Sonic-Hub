@@ -192,7 +192,7 @@ export class JobQueueService {
       if (account) {
         try {
           const { decryptApiKey } = await import('../encryption');
-          const apiKey = decryptApiKey(account.encryptedApiKey);
+          const apiKey = decryptApiKey(account.apiKey || account.encryptedApiKey || '');
           const statusRes = await kieSunoProvider.getMusicStatus(job.taskId, apiKey);
 
           if (statusRes.success && statusRes.tracks && statusRes.tracks.length > 0) {

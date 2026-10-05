@@ -305,7 +305,13 @@ Fading into the midnight hum...`);
           throw new Error('No active KIE provider account found. Please check Admin Portal.');
         }
 
-        const rawApiKey = activeAcc.apiKey || activeAcc.encryptedApiKey;
+        const rawApiKey = (activeAcc.apiKey || activeAcc.encryptedApiKey || '').trim();
+        const cleanApiKey = rawApiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+
+        if (!cleanApiKey || cleanApiKey.length < 10) {
+          throw new Error('KIE.ai API key is missing or invalid in your active account. Please go to Admin Portal -> KIE Provider Accounts to rotate/update the key.');
+        }
+
         const promptText = instrumental ? '' : lyrics;
 
         const kiePayload: any = {
@@ -334,17 +340,23 @@ Fading into the midnight hum...`);
         const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${rawApiKey}`,
+            'Authorization': `Bearer ${cleanApiKey}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify(kiePayload)
         });
 
-        const kieData = await kieRes.json().catch(() => null);
+        const kieText = await kieRes.text();
+        let kieData: any = null;
+        try { kieData = JSON.parse(kieText); } catch {}
         const taskId = kieData?.data?.taskId || kieData?.data?.task_id || kieData?.taskId || kieData?.task_id;
 
-        if (!taskId) {
-          throw new Error(kieData?.msg || kieData?.message || 'Failed to dispatch task to Suno V6 engine');
+        if (!kieRes.ok || !taskId) {
+          const rawErrMsg = kieData?.msg || kieData?.message || kieText.slice(0, 150) || `KIE request failed (${kieRes.status})`;
+          if (kieRes.status === 401 || rawErrMsg.toLowerCase().includes('unauthorized') || rawErrMsg.toLowerCase().includes('authentication failed')) {
+            throw new Error('KIE.ai API Key Authentication Failed (401). Please check or rotate your API key in Admin Portal -> KIE Accounts.');
+          }
+          throw new Error(rawErrMsg);
         }
 
         // Deduct user credits directly in Firestore

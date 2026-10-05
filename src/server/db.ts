@@ -30,7 +30,8 @@ export interface UserDoc {
 export interface KieAccountDoc {
   id: string;
   name: string;
-  encryptedApiKey: string;
+  apiKey?: string;
+  encryptedApiKey?: string;
   maskedApiKey: string;
   status: 'ACTIVE' | 'RATE_LIMITED' | 'ERROR' | 'DISABLED' | 'COOLDOWN';
   priority: number;

@@ -9,7 +9,9 @@ export class KieSunoProvider implements MusicProvider {
    * ABSOLUTE RULE: Never mock this. If the API fails or credentials are wrong, report real error.
    */
   async createMusic(input: CreateMusicInput, apiKey: string): Promise<CreateMusicResult> {
-    if (!apiKey || !apiKey.trim()) {
+    const cleanApiKey = apiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+
+    if (!cleanApiKey) {
       return {
         success: false,
         error: {
@@ -62,7 +64,7 @@ export class KieSunoProvider implements MusicProvider {
       const response = await fetch(`${this.baseUrl}/jobs/createTask`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey.trim()}`,
+          'Authorization': `Bearer ${cleanApiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)

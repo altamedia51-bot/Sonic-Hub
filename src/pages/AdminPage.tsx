@@ -231,7 +231,7 @@ export const AdminPage: React.FC = () => {
       return;
     }
 
-    const cleanKey = accApiKey.trim();
+    const cleanKey = accApiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
     const cleanName = accName.trim();
     const masked = cleanKey.length > 8
       ? `${cleanKey.slice(0, 4)}...${cleanKey.slice(-4)}`
@@ -258,6 +258,7 @@ export const AdminPage: React.FC = () => {
       id,
       name: cleanName,
       apiKey: cleanKey,
+      encryptedApiKey: cleanKey,
       maskedApiKey: masked,
       status: accStatus,
       priority: Number(accPriority) || 1,
@@ -359,7 +360,7 @@ export const AdminPage: React.FC = () => {
   // Rotate Key
   const handleRotateKey = async (id: string) => {
     if (!newKeyInput.trim()) return;
-    const cleanKey = newKeyInput.trim();
+    const cleanKey = newKeyInput.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
     const masked = cleanKey.length > 8
       ? `${cleanKey.slice(0, 4)}...${cleanKey.slice(-4)}`
       : '••••••••';
@@ -379,6 +380,7 @@ export const AdminPage: React.FC = () => {
       // Update Firestore directly
       await updateDoc(doc(db, 'kie_accounts', id), {
         apiKey: cleanKey,
+        encryptedApiKey: cleanKey,
         maskedApiKey: masked,
         credits,
         lastCheckedCreditsAt: new Date().toISOString(),

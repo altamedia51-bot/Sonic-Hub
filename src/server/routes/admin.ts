@@ -155,7 +155,7 @@ adminRouter.get('/kie-accounts', async (_req: Request, res: Response) => {
       const now = Date.now();
       if (now - lastChecked > 20000 && acc.status === 'ACTIVE') {
         try {
-          const decrypted = decryptApiKey(acc.encryptedApiKey);
+          const decrypted = decryptApiKey(acc.apiKey || acc.encryptedApiKey || '');
           const creditRes = await kieSunoProvider.getAccountCredits(decrypted);
           if (creditRes.success) {
             acc.credits = creditRes.credits;
@@ -255,7 +255,7 @@ adminRouter.post('/kie-accounts/:id/refresh-credits', async (req: Request, res: 
   }
 
   try {
-    const decryptedKey = decryptApiKey(account.encryptedApiKey);
+    const decryptedKey = decryptApiKey(account.apiKey || account.encryptedApiKey || '');
     const creditRes = await kieSunoProvider.getAccountCredits(decryptedKey);
 
     if (creditRes.success) {
@@ -289,7 +289,7 @@ adminRouter.post('/kie-accounts/refresh-all-credits', async (_req: Request, res:
 
   for (const acc of accounts) {
     try {
-      const decryptedKey = decryptApiKey(acc.encryptedApiKey);
+      const decryptedKey = decryptApiKey(acc.apiKey || acc.encryptedApiKey || '');
       const creditRes = await kieSunoProvider.getAccountCredits(decryptedKey);
       if (creditRes.success) {
         acc.credits = creditRes.credits;
@@ -386,7 +386,7 @@ adminRouter.post('/kie-accounts/:id/test', async (req: Request, res: Response) =
   }
 
   try {
-    const decryptedKey = decryptApiKey(existing.encryptedApiKey);
+    const decryptedKey = decryptApiKey(existing.apiKey || existing.encryptedApiKey || '');
     const testResult = await kieSunoProvider.testConnection(decryptedKey);
 
     if (testResult.success) {
