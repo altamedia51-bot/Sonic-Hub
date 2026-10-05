@@ -13,7 +13,7 @@ export interface KieAccount {
   id: string;
   name: string;
   maskedApiKey: string;
-  status: 'ACTIVE' | 'RATE_LIMITED' | 'ERROR' | 'DISABLED' | 'COOLDOWN';
+  status: 'ACTIVE' | 'RATE_LIMITED' | 'ERROR' | 'DISABLED' | 'COOLDOWN' | 'EXHAUSTED';
   priority: number;
   dailyLimit: number;
   usageToday: number;

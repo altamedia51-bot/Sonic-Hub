@@ -384,24 +384,23 @@ Fading into the midnight hum...`);
       // 2. Direct client-side failover fallback if serverless invocation failed or timed out
       if (!dispatchJob) {
         const kieSnap = await getDocs(collection(db, 'kie_accounts'));
-        const activeAcc = kieSnap.docs
+        const allAccs = kieSnap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter((a: any) => a.status === 'ACTIVE' && (a.apiKey || a.encryptedApiKey))
-          .sort((a, b) => (b.priority || 0) - (a.priority || 0) || (b.credits || 0) - (a.credits || 0))[0];
+          .filter((a: any) => (a.status === 'ACTIVE' || a.status === 'RATE_LIMITED') && (a.apiKey || a.encryptedApiKey))
+          // Prioritize accounts with sufficient balance (>= 10 credits or unknown)
+          .sort((a, b) => {
+            const aSufficient = typeof a.credits !== 'number' || a.credits >= 10;
+            const bSufficient = typeof b.credits !== 'number' || b.credits >= 10;
+            if (aSufficient && !bSufficient) return -1;
+            if (!aSufficient && bSufficient) return 1;
+            return ((b.priority || 0) - (a.priority || 0)) || ((b.credits || 0) - (a.credits || 0));
+          });
 
-        if (!activeAcc) {
-          throw new Error('No active KIE provider account found. Please check Admin Portal.');
-        }
-
-        const rawApiKey = (activeAcc.apiKey || activeAcc.encryptedApiKey || '').trim();
-        const cleanApiKey = rawApiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
-
-        if (!cleanApiKey || cleanApiKey.length < 10) {
-          throw new Error('KIE.ai API key is missing or invalid in your active account. Please go to Admin Portal -> KIE Provider Accounts to rotate/update the key.');
+        if (allAccs.length === 0) {
+          throw new Error('No active KIE provider accounts configured. Please check Admin Portal.');
         }
 
         const promptText = instrumental ? '' : lyrics;
-
         const kiePayload: any = {
           model: 'ai-music-api/generate',
           callBackUrl: `${window.location.origin}/api/webhooks/kie/music`,
@@ -425,27 +424,84 @@ Fading into the midnight hum...`);
           kiePayload.input.duration = duration;
         }
 
-        const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${cleanApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(kiePayload)
-        });
+        let taskId: string | null = null;
+        let lastKieError = '';
+        let chosenAccount: any = null;
 
-        const kieText = await kieRes.text();
-        let kieData: any = null;
-        try { kieData = JSON.parse(kieText); } catch {}
-        const taskId = kieData?.data?.taskId || kieData?.data?.task_id || kieData?.taskId || kieData?.task_id;
-
-        if (!kieRes.ok || !taskId) {
-          const rawErrMsg = kieData?.msg || kieData?.message || kieText.slice(0, 150) || `KIE request failed (${kieRes.status})`;
-          if (kieRes.status === 401 || rawErrMsg.toLowerCase().includes('unauthorized') || rawErrMsg.toLowerCase().includes('authentication failed')) {
-            throw new Error('KIE.ai API Key Authentication Failed (401). Please check or rotate your API key in Admin Portal -> KIE Accounts.');
+        // Automatically rotate through eligible accounts until one succeeds
+        for (const activeAcc of allAccs) {
+          // If known credits are below 10, skip to preserve API calls
+          if (typeof activeAcc.credits === 'number' && activeAcc.credits < 10) {
+            console.log(`[Studio] Skipping ${activeAcc.name || activeAcc.id} because credits (${activeAcc.credits}) < 10`);
+            continue;
           }
-          throw new Error(rawErrMsg);
+
+          const rawApiKey = (activeAcc.apiKey || activeAcc.encryptedApiKey || '').trim();
+          const cleanApiKey = rawApiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+          if (!cleanApiKey || cleanApiKey.length < 10) continue;
+
+          console.log(`[Studio] Trying KIE generation with account: ${activeAcc.name || activeAcc.id}`);
+
+          try {
+            const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${cleanApiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(kiePayload)
+            });
+
+            const kieText = await kieRes.text();
+            let kieData: any = null;
+            try { kieData = JSON.parse(kieText); } catch {}
+            const parsedTaskId = kieData?.data?.taskId || kieData?.data?.task_id || kieData?.taskId || kieData?.task_id;
+
+            if (kieRes.ok && parsedTaskId) {
+              taskId = String(parsedTaskId);
+              chosenAccount = activeAcc;
+              console.log(`[Studio] Task ${taskId} created successfully using ${activeAcc.name || activeAcc.id}`);
+              break;
+            }
+
+            const rawErrMsg = String(kieData?.msg || kieData?.message || kieText.slice(0, 150) || `KIE request failed (${kieRes.status})`);
+            lastKieError = rawErrMsg;
+
+            const isCreditDepleted = kieRes.status === 402 || 
+              rawErrMsg.toLowerCase().includes('credits insufficient') || 
+              rawErrMsg.toLowerCase().includes("balance isn't enough") || 
+              rawErrMsg.toLowerCase().includes('insufficient');
+
+            if (isCreditDepleted) {
+              console.warn(`[Studio] Account ${activeAcc.name || activeAcc.id} has insufficient credits. Marking EXHAUSTED and automatically rotating to next account...`);
+              await updateDoc(doc(db, 'kie_accounts', activeAcc.id), {
+                status: 'EXHAUSTED',
+                credits: 0,
+                lastError: `Credits exhausted: ${rawErrMsg}`,
+                updatedAt: new Date().toISOString()
+              }).catch(() => null);
+              // Automatic rotation to next account in loop!
+              continue;
+            } else if (kieRes.status === 401 || rawErrMsg.toLowerCase().includes('unauthorized')) {
+              await updateDoc(doc(db, 'kie_accounts', activeAcc.id), {
+                status: 'ERROR',
+                lastError: 'API key authentication failed (401)',
+                updatedAt: new Date().toISOString()
+              }).catch(() => null);
+              continue;
+            }
+          } catch (accErr: any) {
+            console.warn(`[Studio] Account ${activeAcc.name || activeAcc.id} failed:`, accErr.message);
+            lastKieError = accErr.message;
+            continue;
+          }
         }
+
+        if (!taskId || !chosenAccount) {
+          throw new Error(lastKieError || 'All configured KIE accounts are currently exhausted or unavailable. Please add or top up an account in Admin Portal.');
+        }
+
+        const activeAcc = chosenAccount;
 
         // Deduct user credits directly in Firestore
         const requiredCost = selectedModelCap.defaultCreditCost || 10;

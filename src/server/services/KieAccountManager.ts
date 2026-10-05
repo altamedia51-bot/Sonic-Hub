@@ -38,6 +38,11 @@ export class KieAccountManager {
         return false;
       }
 
+      // If account live credits are known and less than 10 (Suno generation minimum is 10-12 credits), skip
+      if (typeof acc.credits === 'number' && acc.credits < 10) {
+        return false;
+      }
+
       return true;
     });
 
@@ -168,10 +173,28 @@ export class KieAccountManager {
       const err = res.error;
       const isRateLimit = err?.code === 'RATE_LIMITED' || err?.statusCode === 429;
       const isAuthError = err?.code === 'AUTH_FAILED' || err?.statusCode === 401 || err?.statusCode === 403;
+      const isInsufficientCredits = err?.code === 'INSUFFICIENT_PROVIDER_CREDITS' || 
+        (err?.message && (
+          err.message.toLowerCase().includes('credits insufficient') || 
+          err.message.toLowerCase().includes("balance isn't enough") || 
+          err.message.toLowerCase().includes('insufficient')
+        ));
 
       console.warn(`[KieAccountManager] Account ${account.name} error:`, err?.code, err?.message);
 
-      if (isRateLimit) {
+      if (isInsufficientCredits) {
+        console.warn(`[KieAccountManager] Account ${account.name} has depleted credits. Marking EXHAUSTED and rotating to next account.`);
+        await dbStore.upsertKieAccount({
+          ...(updatedAccount || account),
+          activeJobs: currentActive,
+          status: 'EXHAUSTED',
+          credits: 0,
+          lastError: `Credits exhausted: ${err?.message}`,
+          failureCount: account.failureCount + 1
+        });
+        // Continue failover loop to try next account!
+        continue;
+      } else if (isRateLimit) {
         // Cooldown for 60 seconds
         const cooldownUntil = new Date(Date.now() + 60 * 1000).toISOString();
         await dbStore.upsertKieAccount({

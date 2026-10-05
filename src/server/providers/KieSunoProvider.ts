@@ -91,18 +91,24 @@ export class KieSunoProvider implements MusicProvider {
         };
       }
 
-      // Check HTTP status code
+      // Check HTTP status code and response payload
+      const rawMsg = String(resJson?.msg || resJson?.message || '');
+      const isCreditInsufficient = response.status === 402 || 
+        rawMsg.toLowerCase().includes('credits insufficient') || 
+        rawMsg.toLowerCase().includes("balance isn't enough") || 
+        rawMsg.toLowerCase().includes('insufficient');
+
       if (!response.ok) {
         const isAuthError = response.status === 401 || response.status === 403;
         const isRateLimit = response.status === 429 || resJson?.code === 429;
-        const isRetryable = response.status >= 500 || isRateLimit;
+        const isRetryable = response.status >= 500 || isRateLimit || isCreditInsufficient;
 
         return {
           success: false,
           rawResponse: resJson,
           error: {
-            code: isAuthError ? 'AUTH_FAILED' : isRateLimit ? 'RATE_LIMITED' : 'KIE_PROVIDER_ERROR',
-            message: resJson?.msg || resJson?.message || `KIE request failed with HTTP ${response.status}`,
+            code: isCreditInsufficient ? 'INSUFFICIENT_PROVIDER_CREDITS' : isAuthError ? 'AUTH_FAILED' : isRateLimit ? 'RATE_LIMITED' : 'KIE_PROVIDER_ERROR',
+            message: rawMsg || `KIE request failed with HTTP ${response.status}`,
             statusCode: response.status,
             retryable: isRetryable
           }
@@ -113,15 +119,15 @@ export class KieSunoProvider implements MusicProvider {
       const taskId = resJson?.data?.task_id || resJson?.data?.taskId || resJson?.taskId || resJson?.task_id;
 
       if (!taskId) {
-        const errMsg = resJson?.msg || resJson?.message || 'No task_id returned by KIE API';
+        const errMsg = rawMsg || 'No task_id returned by KIE API';
         return {
           success: false,
           rawResponse: resJson,
           error: {
-            code: 'TASK_ID_MISSING',
+            code: isCreditInsufficient ? 'INSUFFICIENT_PROVIDER_CREDITS' : 'TASK_ID_MISSING',
             message: errMsg,
             statusCode: response.status,
-            retryable: false
+            retryable: isCreditInsufficient
           }
         };
       }
