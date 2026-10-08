@@ -27,6 +27,7 @@ import { GenerationJob, GenerationTrack, ModelCapability } from '../types';
 import { db } from '../firebase/config';
 import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
 import { downloadAudioFile } from '../utils/download';
+import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
 interface StudioPageProps {
   onGoToAdmin?: () => void;
@@ -139,7 +140,10 @@ Fading into the midnight hum...`);
 
               const recovered: GenerationTrack[] = [];
               for (const t of rawTracks) {
-                const aUrl = t.audio_url || t.stream_audio_url || t.audioUrl;
+                const aUrl = resolvePlayableAudioUrl({
+                  audioUrl: t.audio_url || t.audioUrl,
+                  streamAudioUrl: t.stream_audio_url || t.streamAudioUrl
+                });
                 if (aUrl) {
                   const newTrk: GenerationTrack = {
                     id: `trk_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

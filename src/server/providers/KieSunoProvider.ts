@@ -226,12 +226,25 @@ export class KieSunoProvider implements MusicProvider {
 
       const tracks: TrackData[] = [];
       for (const item of rawTracks) {
-        const audioUrl = item?.audio_url || item?.audioUrl || item?.stream_audio_url || item?.streamAudioUrl || item?.source_url || item?.mp3_url;
-        if (audioUrl) {
+        let permanentAudioUrl = item?.audio_url || item?.audioUrl || item?.source_url || item?.mp3_url || '';
+        const streamAudioUrl = item?.stream_audio_url || item?.streamAudioUrl || '';
+
+        // If permanentAudioUrl is missing or is an audiostream link, check for stream link fallback
+        let resolvedAudioUrl = permanentAudioUrl || streamAudioUrl;
+
+        // If the URL is an audiostream link, extract the UUID and convert to permanent tempfile CDN URL
+        if (resolvedAudioUrl && resolvedAudioUrl.includes('audiostream.kie.ai')) {
+          const match = resolvedAudioUrl.match(/audiostream\.kie\.ai\/stream\/([a-f0-9-]+)\.mp3/i);
+          if (match && match[1]) {
+            resolvedAudioUrl = `https://tempfile.aiquickdraw.com/r/${match[1]}.mp3`;
+          }
+        }
+
+        if (resolvedAudioUrl) {
           tracks.push({
             id: String(item.id || item.trackId || `track_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`),
-            audioUrl: audioUrl,
-            streamAudioUrl: item?.stream_audio_url || item?.streamAudioUrl || audioUrl,
+            audioUrl: resolvedAudioUrl,
+            streamAudioUrl: streamAudioUrl || resolvedAudioUrl,
             imageUrl: item?.image_url || item?.imageUrl || item?.image_large_url || item?.cover_url,
             title: item?.title || item?.name,
             tags: item?.tags || item?.style,

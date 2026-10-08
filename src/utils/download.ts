@@ -1,8 +1,11 @@
+import { resolvePlayableAudioUrl } from './audioUrl';
+
 /**
  * Utility to reliably download audio files in browser without navigating away
  * or failing on Vercel Serverless proxy payload limits.
  */
-export async function downloadAudioFile(audioUrl: string, title?: string): Promise<boolean> {
+export async function downloadAudioFile(rawAudioUrl: string, title?: string): Promise<boolean> {
+  const audioUrl = resolvePlayableAudioUrl(rawAudioUrl);
   if (!audioUrl) return false;
 
   const cleanTitle = (title || 'sonic-hub-music')

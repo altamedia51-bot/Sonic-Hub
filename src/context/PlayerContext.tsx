@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
 import { GenerationTrack, GenerationJob } from '../types';
+import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
 interface PlayerContextType {
   currentTrack: GenerationTrack | null;
@@ -54,6 +55,18 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const onError = (e: Event) => {
       console.warn('[Player] Audio playback event error:', e);
+      // Auto-fallback: if failed URL was an audiostream link, retry with permanent tempfile link
+      if (audioRef.current && audioRef.current.src.includes('audiostream.kie.ai')) {
+        const match = audioRef.current.src.match(/audiostream\.kie\.ai\/stream\/([a-f0-9-]+)\.mp3/i);
+        if (match && match[1]) {
+          const fallbackUrl = `https://tempfile.aiquickdraw.com/r/${match[1]}.mp3`;
+          console.log('[Player] Switching from dead stream to permanent audio URL:', fallbackUrl);
+          audioRef.current.src = fallbackUrl;
+          audioRef.current.load();
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+          return;
+        }
+      }
       setIsPlaying(false);
     };
 
@@ -73,7 +86,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const playTrack = (track: GenerationTrack, job?: GenerationJob) => {
     if (!audioRef.current) return;
-    const url = track.streamAudioUrl || track.audioUrl;
+    const url = resolvePlayableAudioUrl(track);
     if (!url) return;
 
     if (currentTrack?.id === track.id) {

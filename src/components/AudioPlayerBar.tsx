@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { downloadAudioFile } from '../utils/download';
+import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
 export const AudioPlayerBar: React.FC = () => {
   const { 
@@ -33,7 +34,7 @@ export const AudioPlayerBar: React.FC = () => {
     return null;
   }
 
-  const audioSrc = currentTrack.streamAudioUrl || currentTrack.audioUrl;
+  const audioSrc = resolvePlayableAudioUrl(currentTrack);
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleDownload = () => {

@@ -104,11 +104,22 @@ webhookRouter.post('/kie/music', async (req: Request, res: Response) => {
 
     if (Array.isArray(tracksList)) {
       for (const item of tracksList) {
-        if (item?.audio_url || item?.stream_audio_url || item?.audioUrl || item?.streamAudioUrl) {
+        let permanentUrl = item?.audio_url || item?.audioUrl || item?.source_url || item?.mp3_url || '';
+        const streamUrl = item?.stream_audio_url || item?.streamAudioUrl || '';
+        let resolvedAudioUrl = permanentUrl || streamUrl;
+
+        if (resolvedAudioUrl && resolvedAudioUrl.includes('audiostream.kie.ai')) {
+          const match = resolvedAudioUrl.match(/audiostream\.kie\.ai\/stream\/([a-f0-9-]+)\.mp3/i);
+          if (match && match[1]) {
+            resolvedAudioUrl = `https://tempfile.aiquickdraw.com/r/${match[1]}.mp3`;
+          }
+        }
+
+        if (resolvedAudioUrl) {
           validTracks.push({
             ...item,
-            audio_url: item.audio_url || item.audioUrl,
-            stream_audio_url: item.stream_audio_url || item.streamAudioUrl || item.audio_url || item.audioUrl,
+            audio_url: resolvedAudioUrl,
+            stream_audio_url: streamUrl || resolvedAudioUrl,
             image_url: item.image_url || item.imageUrl || item.image_large_url,
             prompt: item.prompt || job.lyrics,
             model_name: item.model_name || item.model || job.model,
