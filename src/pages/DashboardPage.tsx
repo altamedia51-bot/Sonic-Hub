@@ -245,8 +245,8 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
         </button>
       </div>
 
-      {/* Profile & Personal KIE.ai API Key (BYOK) Card */}
-      {(activeTab === 'settings' || user?.usePersonalKey) && (
+      {/* Profile & Personal KIE.ai API Key (BYOK) Tab - Only shown on settings tab */}
+      {activeTab === 'settings' && (
         <div className="mb-10 rounded-2xl bg-zinc-900/90 border border-zinc-800 shadow-xl overflow-hidden">
           <div className="p-5 sm:p-6 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-zinc-900 via-zinc-900/95 to-amber-950/20">
             <div className="flex items-center gap-4">
@@ -471,26 +471,27 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
         </div>
       )}
 
-      {/* Metrics Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        
-        {/* Credits Balance Card */}
-        <div className="p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-md">
-          <div className="flex items-center justify-between text-zinc-400 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider">Available Credits</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
-              <Coins className="w-4 h-4" />
+      {/* Overview Tab Content - Exact 4 Cards and Recent Generations */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Metrics Cards Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            
+            {/* Credits Balance Card */}
+            <div className="p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-md">
+              <div className="flex items-center justify-between text-zinc-400 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider">Available Credits</span>
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                  <Coins className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-amber-300 font-mono">
+                {credits.toLocaleString()}
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-1">
+                10 credits reserved per Suno job
+              </p>
             </div>
-          </div>
-          <div className="text-2xl font-black text-amber-300 font-mono">
-            {credits.toLocaleString()}
-          </div>
-          <p className="text-[11px] text-zinc-500 mt-1">
-            {user?.usePersonalKey && user?.personalKieApiKey 
-              ? '⚡ BYOK Mode Active (Free Platform)' 
-              : '10 credits reserved per Suno job'}
-          </p>
-        </div>
 
         {/* Total Songs Card */}
         <div className="p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-md">
@@ -605,8 +606,10 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
           </div>
         )}
       </div>
+    </>
+  )}
 
-    </div>
+</div>
   );
 };
 

@@ -17,7 +17,9 @@ import {
   Volume2,
   RefreshCw,
   Zap,
-  Key
+  Key,
+  Trash2,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
@@ -969,7 +971,20 @@ Fading into the midnight hum...`);
                 <Sliders className="w-4 h-4 text-amber-400" />
                 Style & Production Prompt
               </h2>
-              <span className="text-[11px] font-mono text-zinc-500">Max 500 chars</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-zinc-500">{style.length}/500</span>
+                {style.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStyle('')}
+                    className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-rose-400 transition bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 px-2 py-0.5 rounded-lg active:scale-95"
+                    title="Clear Style Prompt"
+                  >
+                    <Trash2 className="w-3 h-3 text-rose-400/80" />
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             <textarea
@@ -1091,9 +1106,22 @@ Fading into the midnight hum...`);
                   Exact text is preserved and dispatched to Suno engine without automatic modification.
                 </p>
               </div>
-              <span className="text-[11px] font-mono text-zinc-500">
-                {lyrics.length} chars
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-zinc-500">
+                  {lyrics.length} chars
+                </span>
+                {!instrumental && lyrics.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setLyrics('')}
+                    className="flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-rose-400 transition bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 px-2 py-0.5 rounded-lg active:scale-95 shadow-sm"
+                    title="Clear lyrics"
+                  >
+                    <Trash2 className="w-3 h-3 text-rose-400/80" />
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Structural Insertion Tags */}
@@ -1112,18 +1140,16 @@ Fading into the midnight hum...`);
             </div>
 
             {/* Large Professional Lyrics Editor */}
-            <div className="relative">
-              <textarea
-                rows={16}
-                disabled={instrumental}
-                value={instrumental ? '/// INSTRUMENTAL MODE ACTIVE - NO VOCALS ///' : lyrics}
-                onChange={(e) => setLyrics(e.target.value)}
-                placeholder="[Intro]\nEnter your lyrics here..."
-                className={`w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-4 text-xs font-mono leading-relaxed outline-none transition resize-none ${
-                  instrumental ? 'text-zinc-600 bg-zinc-950/40 italic' : 'text-zinc-200'
-                }`}
-              />
-            </div>
+            <textarea
+              rows={16}
+              disabled={instrumental}
+              value={instrumental ? '/// INSTRUMENTAL MODE ACTIVE - NO VOCALS ///' : lyrics}
+              onChange={(e) => setLyrics(e.target.value)}
+              placeholder="[Intro]\nEnter your lyrics here..."
+              className={`w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-xl p-4 text-xs font-mono leading-relaxed outline-none transition resize-none ${
+                instrumental ? 'text-zinc-600 bg-zinc-950/40 italic' : 'text-zinc-200'
+              }`}
+            />
 
             {/* BYOK Status Indicator */}
             {user?.usePersonalKey && user?.personalKieApiKey && (
