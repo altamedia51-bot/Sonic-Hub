@@ -15,7 +15,9 @@ import {
   ShieldAlert, 
   Flame, 
   Volume2,
-  RefreshCw
+  RefreshCw,
+  Zap,
+  Key
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
@@ -343,12 +345,16 @@ Fading into the midnight hum...`);
 
       // 1. Try server endpoint first
       try {
+        const personalKeyClean = (user?.personalKieApiKey || '').trim();
+        const usePersonal = Boolean(user?.usePersonalKey && personalKeyClean.length >= 10);
+
         const res = await fetch('/api/music/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-user-id': user?.id || 'admin_altamedia',
-            'x-user-email': user?.email || 'altamedia51@gmail.com'
+            'x-user-email': user?.email || 'altamedia51@gmail.com',
+            'x-personal-kie-key': usePersonal ? personalKeyClean : ''
           },
           body: JSON.stringify({
             title,
@@ -397,8 +403,23 @@ Fading into the midnight hum...`);
             return ((b.priority || 0) - (a.priority || 0)) || ((b.credits || 0) - (a.credits || 0));
           });
 
-        if (allAccs.length === 0) {
-          throw new Error('No active KIE provider accounts configured. Please check Admin Portal.');
+        // If user has personal key enabled, prepend as top priority BYOK candidate
+        const personalKeyClean = (user?.personalKieApiKey || '').trim();
+        const usePersonal = Boolean(user?.usePersonalKey && personalKeyClean.length >= 10);
+        const candidateAccounts = usePersonal ? [
+          {
+            id: `personal_${user?.id}`,
+            name: 'Personal Key (BYOK)',
+            apiKey: personalKeyClean,
+            status: 'ACTIVE',
+            priority: 9999,
+            isPersonal: true
+          },
+          ...allAccs
+        ] : allAccs;
+
+        if (candidateAccounts.length === 0) {
+          throw new Error('No active KIE provider accounts configured. Please check Admin Portal or configure your Personal Key in Dashboard.');
         }
 
         const promptText = instrumental ? '' : lyrics;
@@ -430,9 +451,9 @@ Fading into the midnight hum...`);
         let chosenAccount: any = null;
 
         // Automatically rotate through eligible accounts until one succeeds
-        for (const activeAcc of allAccs) {
-          // If known credits are below 10, skip to preserve API calls
-          if (typeof activeAcc.credits === 'number' && activeAcc.credits < 10) {
+        for (const activeAcc of candidateAccounts) {
+          // If known credits are below 10 (and not a personal key), skip to preserve API calls
+          if (!activeAcc.isPersonal && typeof activeAcc.credits === 'number' && activeAcc.credits < 10) {
             console.log(`[Studio] Skipping ${activeAcc.name || activeAcc.id} because credits (${activeAcc.credits}) < 10`);
             continue;
           }
@@ -504,11 +525,12 @@ Fading into the midnight hum...`);
 
         const activeAcc = chosenAccount;
 
-        // Deduct user credits directly in Firestore
-        const requiredCost = selectedModelCap.defaultCreditCost || 10;
+        // Deduct user credits directly in Firestore (zero deduction if using personal key)
+        const isPersonalBYOK = Boolean(activeAcc?.isPersonal);
+        const requiredCost = isPersonalBYOK ? 0 : (selectedModelCap.defaultCreditCost || 10);
         const currentCredits = user?.credits ?? credits ?? 0;
         const newCredits = Math.max(0, currentCredits - requiredCost);
-        if (user) {
+        if (user && requiredCost > 0) {
           await updateDoc(doc(db, 'users', user.id), {
             credits: newCredits,
             updatedAt: new Date().toISOString()
@@ -1103,6 +1125,19 @@ Fading into the midnight hum...`);
               />
             </div>
 
+            {/* BYOK Status Indicator */}
+            {user?.usePersonalKey && user?.personalKieApiKey && (
+              <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-center justify-between text-xs text-emerald-300">
+                <span className="flex items-center gap-2 font-medium">
+                  <Zap className="w-4 h-4 text-emerald-400" />
+                  Personal KIE.ai Key Active &bull; Zero platform credits consumed
+                </span>
+                <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-emerald-900/60 border border-emerald-700 text-emerald-300">
+                  BYOK DIRECT
+                </span>
+              </div>
+            )}
+
             {/* Submit / Generate Button */}
             <button
               type="button"
@@ -1124,10 +1159,15 @@ Fading into the midnight hum...`);
                   <Loader2 className="w-5 h-5 animate-spin" />
                   GENERATING MUSIC IN STUDIO ({activeJob.status})...
                 </>
+              ) : user?.usePersonalKey && user?.personalKieApiKey ? (
+                <>
+                  <Zap className="w-5 h-5 text-emerald-300" />
+                  🎵 GENERATE MUSIC (BYOK &bull; 0 PLATFORM CREDITS)
+                </>
               ) : (
                 <>
                   <Music className="w-5 h-5" />
-                  🎵 GENERATE MUSIC
+                  🎵 GENERATE MUSIC ({selectedModelCap.defaultCreditCost || 10} CREDITS)
                 </>
               )}
             </button>

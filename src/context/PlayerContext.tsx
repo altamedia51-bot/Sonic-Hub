@@ -14,6 +14,7 @@ interface PlayerContextType {
   seek: (time: number) => void;
   setVolume: (vol: number) => void;
   formatTime: (seconds: number) => string;
+  closePlayer: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -136,6 +137,18 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const closePlayer = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    setIsPlaying(false);
+    setCurrentTrack(null);
+    setCurrentJob(null);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
   return (
     <PlayerContext.Provider value={{
       currentTrack,
@@ -149,7 +162,8 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       pause,
       seek,
       setVolume,
-      formatTime
+      formatTime,
+      closePlayer
     }}>
       {children}
     </PlayerContext.Provider>

@@ -19,6 +19,7 @@ export class JobQueueService {
     negativeTags?: string;
     vocalGender?: 'm' | 'f';
     duration?: number;
+    personalApiKey?: string;
   }): Promise<{ success: boolean; job?: GenerationJobDoc; error?: { code: string; message: string } }> {
     const settings = await dbStore.getSettings();
 
@@ -68,8 +69,11 @@ export class JobQueueService {
       };
     }
 
-    // Determine credit cost
-    const creditCost = modelCap.defaultCreditCost;
+    // Determine credit cost and check for Personal KIE Key (BYOK)
+    const userDoc = await dbStore.getUser(params.userId);
+    const resolvedPersonalKey = (params.personalApiKey || (userDoc?.usePersonalKey ? userDoc.personalKieApiKey : ''))?.trim();
+    const isUsingPersonalKey = Boolean(resolvedPersonalKey && resolvedPersonalKey.length >= 10);
+    const creditCost = isUsingPersonalKey ? 0 : modelCap.defaultCreditCost;
     const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
     // Create Initial Job in QUEUED state
@@ -77,6 +81,7 @@ export class JobQueueService {
       id: jobId,
       userId: params.userId,
       provider: 'KIE_SUNO',
+      providerAccountName: isUsingPersonalKey ? 'Personal Key (BYOK)' : undefined,
       title: params.title.trim(),
       lyrics: params.lyrics,
       style: params.style.trim(),
@@ -95,21 +100,23 @@ export class JobQueueService {
 
     await dbStore.createJob(job);
 
-    // Reserve Credits
-    const reserveRes = await creditService.reserveCredits(params.userId, jobId, creditCost);
-    if (!reserveRes.success) {
-      await dbStore.updateJob(jobId, {
-        status: 'FAILED',
-        errorCode: 'INSUFFICIENT_CREDITS',
-        errorMessage: reserveRes.error
-      });
-      return {
-        success: false,
-        error: {
-          code: 'INSUFFICIENT_CREDITS',
-          message: reserveRes.error || 'Insufficient credits'
-        }
-      };
+    // Reserve Credits only if NOT using personal key
+    if (creditCost > 0) {
+      const reserveRes = await creditService.reserveCredits(params.userId, jobId, creditCost);
+      if (!reserveRes.success) {
+        await dbStore.updateJob(jobId, {
+          status: 'FAILED',
+          errorCode: 'INSUFFICIENT_CREDITS',
+          errorMessage: reserveRes.error
+        });
+        return {
+          success: false,
+          error: {
+            code: 'INSUFFICIENT_CREDITS',
+            message: reserveRes.error || 'Insufficient credits'
+          }
+        };
+      }
     }
 
     // Transition to SUBMITTING
@@ -119,22 +126,56 @@ export class JobQueueService {
     const publicAppUrl = getPublicAppUrl();
     const callBackUrl = `${publicAppUrl}/api/webhooks/kie/music`;
 
-    console.log(`[JobQueueService] Submitting job ${jobId} to KIE.ai with callback: ${callBackUrl}`);
+    console.log(`[JobQueueService] Submitting job ${jobId} to KIE.ai with callback: ${callBackUrl} (BYOK: ${isUsingPersonalKey})`);
 
-    // Submit to KIE with multi-account routing & failover
-    const submission = await kieAccountManager.submitWithFailover({
-      title: params.title,
-      prompt: params.lyrics,
-      lyrics: params.lyrics,
-      style: params.style,
-      model: params.model,
-      customMode: params.customMode,
-      instrumental: params.instrumental,
-      negativeTags: params.negativeTags,
-      vocalGender: params.vocalGender,
-      duration: params.duration,
-      callBackUrl
-    }, settings.maxRetryCount);
+    let submission: any = null;
+
+    if (isUsingPersonalKey && resolvedPersonalKey) {
+      // Direct submission using User's Personal KIE.ai API key
+      const cleanPersonalKey = resolvedPersonalKey
+        .replace(/^Bearer\s+/i, '')
+        .replace(/^["']|["']$/g, '')
+        .trim();
+
+      const res = await kieSunoProvider.createMusic({
+        title: params.title,
+        prompt: params.lyrics,
+        lyrics: params.lyrics,
+        style: params.style,
+        model: params.model,
+        customMode: params.customMode,
+        instrumental: params.instrumental,
+        negativeTags: params.negativeTags,
+        vocalGender: params.vocalGender,
+        duration: params.duration,
+        callBackUrl
+      }, cleanPersonalKey);
+
+      submission = {
+        result: res,
+        accountUsed: {
+          id: `personal_${params.userId}`,
+          name: 'Personal Key (BYOK)',
+          status: 'ACTIVE',
+          priority: 99
+        }
+      };
+    } else {
+      // Submit to KIE with multi-account routing & failover
+      submission = await kieAccountManager.submitWithFailover({
+        title: params.title,
+        prompt: params.lyrics,
+        lyrics: params.lyrics,
+        style: params.style,
+        model: params.model,
+        customMode: params.customMode,
+        instrumental: params.instrumental,
+        negativeTags: params.negativeTags,
+        vocalGender: params.vocalGender,
+        duration: params.duration,
+        callBackUrl
+      }, settings.maxRetryCount);
+    }
 
     if (!submission.result.success || !submission.result.taskId) {
       // Submission Failed: mark FAILED and refund reserved credits

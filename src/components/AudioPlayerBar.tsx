@@ -8,7 +8,8 @@ import {
   Disc, 
   RotateCcw, 
   RotateCw,
-  ExternalLink
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { downloadAudioFile } from '../utils/download';
@@ -24,7 +25,8 @@ export const AudioPlayerBar: React.FC = () => {
     togglePlay, 
     seek, 
     setVolume, 
-    formatTime 
+    formatTime,
+    closePlayer
   } = usePlayer();
 
   if (!currentTrack) {
@@ -40,7 +42,7 @@ export const AudioPlayerBar: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-xl shadow-2xl px-4 py-3">
+    <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 z-50 bg-zinc-950/95 border-t border-zinc-800 backdrop-blur-xl shadow-2xl px-3 py-2 sm:px-4 sm:py-3">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
         
         {/* Track Info & Artwork */}
@@ -172,6 +174,16 @@ export const AudioPlayerBar: React.FC = () => {
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+
+          {/* Dismiss Player */}
+          <button
+            type="button"
+            onClick={closePlayer}
+            className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
+            title="Close Player"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
 
       </div>

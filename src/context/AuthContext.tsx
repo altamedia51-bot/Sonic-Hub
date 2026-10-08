@@ -21,6 +21,7 @@ interface AuthContextType {
   loginAsDemoUser: () => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateUserProfile: (updates: Partial<User>) => Promise<{ success: boolean; error?: string; user?: User }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -254,6 +255,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('sonichub_logged_out', 'true');
   };
 
+  const updateUserProfile = async (updates: Partial<User>): Promise<{ success: boolean; error?: string; user?: User }> => {
+    if (!user) return { success: false, error: 'User not logged in' };
+
+    try {
+      const updatedUser: User = {
+        ...user,
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+
+      // 1. Direct write to Firestore
+      try {
+        await setDoc(doc(db, 'users', user.id), updatedUser, { merge: true });
+      } catch (fsErr: any) {
+        console.warn('[AuthContext] Firestore profile write note:', fsErr.message);
+      }
+
+      // 2. Also notify backend
+      try {
+        const res = await fetch('/api/auth/profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': user.id,
+            'x-user-email': user.email
+          },
+          body: JSON.stringify(updates)
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.success && data?.user) {
+            setUser(data.user);
+            localStorage.setItem('sonichub_user', JSON.stringify(data.user));
+            return { success: true, user: data.user };
+          }
+        }
+      } catch (beErr) {}
+
+      setUser(updatedUser);
+      localStorage.setItem('sonichub_user', JSON.stringify(updatedUser));
+      return { success: true, user: updatedUser };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to update profile' };
+    }
+  };
+
   const isAdmin = user?.role === 'admin' || user?.email.toLowerCase() === 'altamedia51@gmail.com';
   const credits = user?.credits || 0;
 
@@ -268,7 +315,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loginAsAdmin,
       loginAsDemoUser,
       logout,
-      refreshUser
+      refreshUser,
+      updateUserProfile
     }}>
       {children}
     </AuthContext.Provider>

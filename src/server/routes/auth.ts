@@ -95,3 +95,97 @@ authRouter.get('/me', async (req: Request, res: Response) => {
     activeJobsCount: activeJobs.length
   });
 });
+
+// POST /api/auth/profile - Update user profile & personal KIE.ai API key
+authRouter.post('/profile', async (req: Request, res: Response) => {
+  try {
+    const userIdHeader = (req.headers['x-user-id'] as string) || '';
+    const userEmailHeader = (req.headers['x-user-email'] as string) || '';
+    const { name, personalKieApiKey, usePersonalKey } = req.body;
+
+    let user = null;
+    if (userIdHeader) user = await dbStore.getUser(userIdHeader);
+    if (!user && userEmailHeader) user = await dbStore.getUser(userEmailHeader);
+    if (!user) user = await dbStore.getUser('altamedia51@gmail.com');
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+
+    if (typeof name === 'string' && name.trim()) {
+      user.name = name.trim();
+    }
+
+    if (personalKieApiKey !== undefined) {
+      user.personalKieApiKey = String(personalKieApiKey).trim();
+    }
+
+    if (typeof usePersonalKey === 'boolean') {
+      user.usePersonalKey = usePersonalKey;
+    }
+
+    user.updatedAt = new Date().toISOString();
+    const updated = await dbStore.upsertUser(user);
+
+    return res.status(200).json({
+      success: true,
+      user: updated,
+      message: 'Profile updated successfully'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/auth/test-personal-key - Validate and test user's personal KIE.ai API key
+authRouter.post('/test-personal-key', async (req: Request, res: Response) => {
+  try {
+    const { apiKey } = req.body;
+    const cleanKey = String(apiKey || '')
+      .replace(/^Bearer\s+/i, '')
+      .replace(/^["']|["']$/g, '')
+      .trim();
+
+    if (!cleanKey || cleanKey.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid KIE.ai API key'
+      });
+    }
+
+    const response = await fetch('https://api.kie.ai/api/v1/chat/credit', {
+      headers: {
+        'Authorization': `Bearer ${cleanKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const text = await response.text();
+    let data: any = null;
+    try { data = JSON.parse(text); } catch {}
+
+    if (!response.ok) {
+      return res.status(200).json({
+        success: false,
+        statusCode: response.status,
+        message: data?.msg || data?.message || `KIE.ai returned HTTP ${response.status}`
+      });
+    }
+
+    // Parse credit balance
+    let credits = 0;
+    if (typeof data?.data === 'number') credits = data.data;
+    else if (typeof data?.data?.credit === 'number') credits = data.data.credit;
+    else if (typeof data?.data?.credits === 'number') credits = data.data.credits;
+    else if (typeof data?.credit === 'number') credits = data.credit;
+
+    return res.status(200).json({
+      success: true,
+      credits,
+      message: `Connection successful! Balance: ${credits} credits`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PlayerProvider } from './context/PlayerContext';
 import { Navbar } from './components/Navbar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { AuthModal } from './components/AuthModal';
 import { StudioPage } from './pages/StudioPage';
@@ -38,7 +39,7 @@ function AppContent() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1">
+      <main className="flex-1 pb-20 md:pb-6">
         {currentTab === 'studio' && (
           <StudioPage onGoToAdmin={() => setCurrentTab('admin')} />
         )}
@@ -58,6 +59,18 @@ function AppContent() {
 
       {/* Global Audio Player Bar */}
       <AudioPlayerBar />
+
+      {/* Native Mobile App Bottom Navigation Bar */}
+      <MobileBottomNav 
+        currentTab={currentTab} 
+        setCurrentTab={(tab) => {
+          if (tab === 'admin' && !isAdmin) {
+            return;
+          }
+          setCurrentTab(tab as any);
+        }} 
+        isAdmin={isAdmin} 
+      />
 
       {/* Authentication Modal */}
       <AuthModal 

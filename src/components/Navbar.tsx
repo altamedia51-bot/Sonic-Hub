@@ -200,48 +200,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
 
         </div>
       </div>
-
-      {/* Mobile nav bar */}
-      <div className="flex md:hidden border-t border-zinc-800/80 bg-zinc-950/95 px-2 py-1.5 justify-around items-center">
-        <button
-          onClick={() => setCurrentTab('studio')}
-          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
-            currentTab === 'studio' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 mb-0.5" />
-          Studio
-        </button>
-        <button
-          onClick={() => setCurrentTab('library')}
-          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
-            currentTab === 'library' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Disc className="w-4 h-4 mb-0.5" />
-          Songs
-        </button>
-        <button
-          onClick={() => setCurrentTab('dashboard')}
-          className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
-            currentTab === 'dashboard' ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <LayoutDashboard className="w-4 h-4 mb-0.5" />
-          Dashboard
-        </button>
-        {isAdmin && (
-          <button
-            onClick={() => setCurrentTab('admin')}
-            className={`flex flex-col items-center py-1 px-3 rounded-lg text-[10px] font-semibold transition-all ${
-              currentTab === 'admin' ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <ShieldAlert className="w-4 h-4 mb-0.5" />
-            Admin
-          </button>
-        )}
-      </div>
     </header>
   );
 };

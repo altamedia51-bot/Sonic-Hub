@@ -5,6 +5,8 @@ export interface User {
   role: 'user' | 'admin';
   status: 'active' | 'suspended';
   credits: number;
+  personalKieApiKey?: string;
+  usePersonalKey?: boolean;
   createdAt: string;
   updatedAt: string;
 }
