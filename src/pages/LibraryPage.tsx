@@ -18,7 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
 import { db } from '../firebase/config';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { downloadAudioFile } from '../utils/download';
 
 interface LibraryItem {
@@ -43,11 +43,12 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
       const res = await fetch('/api/music/library', {
         headers: {
           'x-user-id': user?.id || '',
-          'x-user-email': user?.email || ''
+          'x-user-email': user?.email || '',
+          'x-personal-kie-key': user?.personalKieApiKey || ''
         }
       });
       const data = await res.json().catch(() => null);
-      if (data?.success && Array.isArray(data.items) && data.items.length > 0) {
+      if (data?.success && Array.isArray(data.items)) {
         setItems(data.items);
         if (Array.isArray(data.activeJobs)) {
           setActiveJobs(data.activeJobs);
@@ -100,6 +101,88 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
     }
   };
 
+  const [checkingJobId, setCheckingJobId] = useState<string | null>(null);
+
+  const checkSingleActiveJob = async (job: GenerationJob) => {
+    if (!job?.taskId) return;
+    setCheckingJobId(job.id);
+    try {
+      // 1. If user has personal KIE key, try direct query to KIE
+      const cleanKey = (user?.personalKieApiKey || '').replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+      let kData: any = null;
+
+      if (cleanKey.length >= 10) {
+        try {
+          const res = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${job.taskId}`, {
+            headers: {
+              'Authorization': `Bearer ${cleanKey}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (res.ok) {
+            kData = await res.json().catch(() => null);
+          }
+        } catch (e) {}
+      }
+
+      if (kData?.code === 200 && kData?.data) {
+        let rawList: any[] = [];
+        if (Array.isArray(kData?.data?.response?.data)) rawList = kData.data.response.data;
+        else if (kData?.data?.resultJson) {
+          try {
+            const parsed = JSON.parse(kData.data.resultJson);
+            if (Array.isArray(parsed?.data)) rawList = parsed.data;
+          } catch {}
+        }
+
+        if (rawList.length > 0) {
+          for (let i = 0; i < rawList.length; i++) {
+            const tr = rawList[i];
+            const audioUrl = tr.audio_url || tr.audioUrl;
+            if (audioUrl) {
+              const tId = `trk_${tr.id || Math.random().toString(36).slice(2, 7)}_${i}`;
+              await setDoc(doc(db, 'generation_tracks', tId), {
+                id: tId,
+                jobId: job.id,
+                userId: job.userId,
+                providerTrackId: tr.id || String(i),
+                audioUrl: audioUrl,
+                streamAudioUrl: tr.stream_audio_url || tr.streamAudioUrl || audioUrl,
+                imageUrl: tr.image_url || tr.imageUrl,
+                title: `${job.title} (Part ${i + 1})`,
+                tags: job.style,
+                modelName: tr.model_name || tr.modelName || job.model,
+                duration: tr.duration,
+                createdAt: new Date().toISOString()
+              }, { merge: true }).catch(() => {});
+            }
+          }
+
+          await updateDoc(doc(db, 'generation_jobs', job.id), {
+            status: 'COMPLETED',
+            updatedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+      }
+
+      // 2. Also call server job status route
+      await fetch(`/api/music/jobs/${job.id}`, {
+        headers: {
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || '',
+          'x-personal-kie-key': user?.personalKieApiKey || ''
+        }
+      }).catch(() => {});
+
+    } catch (err) {
+      console.warn('Check active job error:', err);
+    } finally {
+      setCheckingJobId(null);
+      await fetchLibrary(false);
+    }
+  };
+
   useEffect(() => {
     fetchLibrary();
   }, [user]);
@@ -108,10 +191,12 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
   useEffect(() => {
     if (activeJobs.length === 0) return;
     const interval = setInterval(() => {
-      fetchLibrary(false);
-    }, 5000);
+      for (const j of activeJobs) {
+        checkSingleActiveJob(j);
+      }
+    }, 4000);
     return () => clearInterval(interval);
-  }, [activeJobs.length]);
+  }, [activeJobs]);
 
   const filteredItems = items.filter(({ job, tracks }) => {
     const matchesSearch = 
@@ -186,10 +271,12 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                   </p>
                 </div>
                 <button
-                  onClick={() => fetchLibrary(false)}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-amber-300 transition flex items-center gap-1 flex-shrink-0"
+                  type="button"
+                  onClick={() => checkSingleActiveJob(j)}
+                  disabled={checkingJobId === j.id}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-medium text-amber-300 transition flex items-center gap-1 flex-shrink-0"
                 >
-                  <RefreshCw className="w-3 h-3" />
+                  <RefreshCw className={`w-3 h-3 ${checkingJobId === j.id ? 'animate-spin' : ''}`} />
                   Check
                 </button>
               </div>

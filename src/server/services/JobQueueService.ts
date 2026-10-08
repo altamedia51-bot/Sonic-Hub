@@ -232,16 +232,26 @@ export class JobQueueService {
     );
 
     if (needsFetch && job.taskId) {
-      let account = job.providerAccountId ? await dbStore.getKieAccount(job.providerAccountId) : null;
-      if (!account) {
-        const allAccounts = await dbStore.getKieAccounts();
-        account = allAccounts.find(a => a.status === 'ACTIVE') || allAccounts[0] || null;
+      let apiKey: string | null = null;
+      const jobUser = await dbStore.getUser(job.userId);
+      if (jobUser?.personalKieApiKey && jobUser.personalKieApiKey.trim().length >= 10) {
+        apiKey = jobUser.personalKieApiKey.replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
       }
 
-      if (account) {
-        try {
+      if (!apiKey) {
+        let account = job.providerAccountId ? await dbStore.getKieAccount(job.providerAccountId) : null;
+        if (!account) {
+          const allAccounts = await dbStore.getKieAccounts();
+          account = allAccounts.find(a => a.status === 'ACTIVE') || allAccounts[0] || null;
+        }
+        if (account) {
           const { decryptApiKey } = await import('../encryption');
-          const apiKey = decryptApiKey(account.apiKey || account.encryptedApiKey || '');
+          apiKey = decryptApiKey(account.apiKey || account.encryptedApiKey || '');
+        }
+      }
+
+      if (apiKey) {
+        try {
           const statusRes = await kieSunoProvider.getMusicStatus(job.taskId, apiKey);
 
           if (statusRes.success && statusRes.tracks && statusRes.tracks.length > 0) {
