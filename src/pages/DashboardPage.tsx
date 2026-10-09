@@ -26,6 +26,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, CreditTransaction } from '../types';
+import { db } from '../firebase/config';
+import { doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStudio }) => {
   const { user, credits, updateUserProfile } = useAuth();
@@ -93,23 +95,35 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
   const handleDeleteJob = async (jobId: string, title: string) => {
     if (!window.confirm(`Apakah Anda yakin ingin menghapus lagu "${title}"?`)) return;
     try {
-      const res = await fetch(`/api/music/jobs/${jobId}`, {
+      // 1. Direct Firestore deletion
+      try {
+        await deleteDoc(doc(db, 'generation_jobs', jobId));
+        const trkSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', jobId))).catch(() => null);
+        if (trkSnap && !trkSnap.empty) {
+          for (const d of trkSnap.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Direct Firestore delete note in dashboard:', fsErr);
+      }
+
+      // 2. Notify backend
+      fetch(`/api/music/jobs/${jobId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${user?.id || ''}`,
           'x-user-id': user?.id || '',
           'x-user-email': user?.email || ''
         }
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success) {
-        setJobs(prev => prev.filter(j => j.id !== jobId));
-        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
-      } else {
-        alert(data?.message || 'Gagal menghapus');
-      }
+      }).catch((e) => console.warn('Backend delete sync note in dashboard:', e));
+
+      // 3. Update state immediately
+      setJobs(prev => prev.filter(j => j.id !== jobId));
+      window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
     } catch (e: any) {
-      alert('Error saat menghapus: ' + e.message);
+      console.error('Error saat menghapus di dashboard:', e);
+      setJobs(prev => prev.filter(j => j.id !== jobId));
     }
   };
 

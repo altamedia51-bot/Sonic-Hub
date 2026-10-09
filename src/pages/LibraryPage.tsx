@@ -21,7 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
 import { db } from '../firebase/config';
-import { collection, getDocs, query, where, orderBy, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { downloadAudioFile } from '../utils/download';
 
 interface LibraryItem {
@@ -52,41 +52,58 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
+      // 1. Direct Firestore deletion (primary & resilient: works on Vercel, static, and local alike)
+      try {
+        if (deleteTarget.type === 'job') {
+          await deleteDoc(doc(db, 'generation_jobs', deleteTarget.id));
+          const trkSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', deleteTarget.id))).catch(() => null);
+          if (trkSnap && !trkSnap.empty) {
+            for (const d of trkSnap.docs) {
+              await deleteDoc(d.ref).catch(() => {});
+            }
+          }
+        } else {
+          await deleteDoc(doc(db, 'generation_tracks', deleteTarget.id));
+        }
+      } catch (fsErr) {
+        console.warn('Direct Firestore delete note:', fsErr);
+      }
+
+      // 2. Also notify backend to purge server in-memory caches
       const endpoint = deleteTarget.type === 'job' 
         ? `/api/music/jobs/${deleteTarget.id}`
         : `/api/music/tracks/${deleteTarget.id}`;
 
-      const res = await fetch(endpoint, {
+      fetch(endpoint, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${user?.id || ''}`,
           'x-user-id': user?.id || '',
           'x-user-email': user?.email || ''
         }
-      });
+      }).catch((e) => console.warn('Backend delete sync note:', e));
 
-      const data = await res.json().catch(() => null);
-
-      if (res.ok && data?.success) {
-        if (deleteTarget.type === 'job') {
-          setItems(prev => prev.filter(item => item.job.id !== deleteTarget.id));
-          setActiveJobs(prev => prev.filter(j => j.id !== deleteTarget.id));
-          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: deleteTarget.id } }));
-        } else {
-          setItems(prev => prev.map(item => ({
-            ...item,
-            tracks: item.tracks.filter(t => t.id !== deleteTarget.id)
-          })).filter(item => item.tracks.length > 0));
-          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: deleteTarget.id } }));
-        }
-
-        setDeleteSuccessMsg(`"${deleteTarget.title}" berhasil dihapus.`);
-        setTimeout(() => setDeleteSuccessMsg(null), 3500);
+      // 3. Immediately reflect in UI state & notify PlayerContext & other pages
+      if (deleteTarget.type === 'job') {
+        setItems(prev => prev.filter(item => item.job.id !== deleteTarget.id));
+        setActiveJobs(prev => prev.filter(j => j.id !== deleteTarget.id));
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: deleteTarget.id } }));
       } else {
-        alert(data?.message || 'Gagal menghapus musik');
+        setItems(prev => prev.map(item => ({
+          ...item,
+          tracks: item.tracks.filter(t => t.id !== deleteTarget.id)
+        })).filter(item => item.tracks.length > 0));
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: deleteTarget.id } }));
       }
+
+      setDeleteSuccessMsg(`"${deleteTarget.title}" berhasil dihapus.`);
+      setTimeout(() => setDeleteSuccessMsg(null), 3500);
     } catch (err: any) {
-      alert('Terjadi kesalahan saat menghapus musik: ' + err.message);
+      console.error('Delete error:', err);
+      // Fallback: still remove from local view if error occurred
+      if (deleteTarget.type === 'job') {
+        setItems(prev => prev.filter(item => item.job.id !== deleteTarget.id));
+      }
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);

@@ -26,7 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack, ModelCapability } from '../types';
 import { db } from '../firebase/config';
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, addDoc, deleteDoc } from 'firebase/firestore';
 import { downloadAudioFile } from '../utils/download';
 import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
@@ -125,26 +125,41 @@ Fading into the midnight hum...`);
     }
     setIsDeletingJob(true);
     try {
-      const res = await fetch(`/api/music/jobs/${jobId}`, {
+      // 1. Direct Firestore deletion
+      try {
+        await deleteDoc(doc(db, 'generation_jobs', jobId));
+        const trkSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', jobId))).catch(() => null);
+        if (trkSnap && !trkSnap.empty) {
+          for (const d of trkSnap.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        }
+      } catch (fsErr) {
+        console.warn('Direct Firestore delete note in studio:', fsErr);
+      }
+
+      // 2. Notify backend to clear server memory cache
+      fetch(`/api/music/jobs/${jobId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${user?.id || ''}`,
           'x-user-id': user?.id || '',
           'x-user-email': user?.email || ''
         }
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success) {
-        if (activeJob?.id === jobId) {
-          setActiveJob(null);
-          setActiveTracks([]);
-        }
-        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
-      } else {
-        alert(data?.message || 'Gagal menghapus lagu');
+      }).catch((e) => console.warn('Backend delete sync note in studio:', e));
+
+      // 3. Clear active job immediately
+      if (activeJob?.id === jobId) {
+        setActiveJob(null);
+        setActiveTracks([]);
       }
+      window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
     } catch (err: any) {
-      alert('Error saat menghapus: ' + err.message);
+      console.error('Delete error in studio:', err);
+      if (activeJob?.id === jobId) {
+        setActiveJob(null);
+        setActiveTracks([]);
+      }
     } finally {
       setIsDeletingJob(false);
     }
@@ -155,23 +170,29 @@ Fading into the midnight hum...`);
       return;
     }
     try {
-      const res = await fetch(`/api/music/tracks/${trackId}`, {
+      // 1. Direct Firestore deletion
+      try {
+        await deleteDoc(doc(db, 'generation_tracks', trackId));
+      } catch (fsErr) {
+        console.warn('Direct Firestore delete track note in studio:', fsErr);
+      }
+
+      // 2. Notify backend
+      fetch(`/api/music/tracks/${trackId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${user?.id || ''}`,
           'x-user-id': user?.id || '',
           'x-user-email': user?.email || ''
         }
-      });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success) {
-        setActiveTracks(prev => prev.filter(t => t.id !== trackId));
-        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId } }));
-      } else {
-        alert(data?.message || 'Gagal menghapus variasi track');
-      }
+      }).catch((e) => console.warn('Backend delete sync note for track in studio:', e));
+
+      // 3. Update active tracks immediately
+      setActiveTracks(prev => prev.filter(t => t.id !== trackId));
+      window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId } }));
     } catch (err: any) {
-      alert('Error saat menghapus: ' + err.message);
+      console.error('Delete track error in studio:', err);
+      setActiveTracks(prev => prev.filter(t => t.id !== trackId));
     }
   };
 

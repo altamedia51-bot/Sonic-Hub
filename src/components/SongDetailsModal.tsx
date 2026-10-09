@@ -25,7 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
 import { db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { downloadAudioFile } from '../utils/download';
 import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
@@ -80,32 +80,47 @@ export const SongDetailsModal: React.FC<SongDetailsModalProps> = ({ onApplyToStu
 
     setIsDeleting(true);
     try {
+      // 1. Direct Firestore deletion
+      try {
+        if (targetJobId) {
+          await deleteDoc(doc(db, 'generation_jobs', targetJobId));
+          const trkSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', targetJobId))).catch(() => null);
+          if (trkSnap && !trkSnap.empty) {
+            for (const d of trkSnap.docs) {
+              await deleteDoc(d.ref).catch(() => {});
+            }
+          }
+        } else if (targetTrackId) {
+          await deleteDoc(doc(db, 'generation_tracks', targetTrackId));
+        }
+      } catch (fsErr) {
+        console.warn('Direct Firestore delete note in modal:', fsErr);
+      }
+
+      // 2. Notify backend to clear server memory cache
       const endpoint = targetJobId 
         ? `/api/music/jobs/${targetJobId}` 
         : `/api/music/tracks/${targetTrackId}`;
 
-      const res = await fetch(endpoint, {
+      fetch(endpoint, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${user?.id || ''}`,
           'x-user-id': user?.id || '',
           'x-user-email': user?.email || ''
         }
-      });
-      const data = await res.json().catch(() => null);
+      }).catch((e) => console.warn('Backend delete sync note in modal:', e));
 
-      if (res.ok && data?.success) {
-        if (targetJobId) {
-          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: targetJobId } }));
-        } else if (targetTrackId) {
-          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: targetTrackId } }));
-        }
-        closeSongDetails();
-      } else {
-        alert(data?.message || 'Gagal menghapus musik');
+      // 3. Dispatch deletion event and close modal
+      if (targetJobId) {
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: targetJobId } }));
+      } else if (targetTrackId) {
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: targetTrackId } }));
       }
+      closeSongDetails();
     } catch (err: any) {
-      alert('Terjadi kesalahan saat menghapus: ' + err.message);
+      console.error('Delete error in modal:', err);
+      closeSongDetails();
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);

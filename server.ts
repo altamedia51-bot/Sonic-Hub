@@ -43,7 +43,11 @@ app.get('/favicon.ico', (_req, res) => {
 // Normalize Vercel rewritten paths
 app.use((req, _res, next) => {
   const matchedPath = req.headers['x-matched-path'] as string;
-  if (matchedPath && matchedPath.startsWith('/api') && req.url !== matchedPath) {
+  const originalUrl = (req.headers['x-vercel-original-url'] as string) || (req.headers['x-forwarded-url'] as string) || req.originalUrl;
+  
+  if (req.url.includes('/api/index') && originalUrl && originalUrl.startsWith('/api')) {
+    req.url = originalUrl;
+  } else if (matchedPath && matchedPath.startsWith('/api') && !matchedPath.includes('index') && req.url !== matchedPath) {
     req.url = matchedPath;
   }
   next();
