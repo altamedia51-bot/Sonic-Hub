@@ -20,13 +20,16 @@ import {
   RefreshCw,
   Loader2,
   ShieldCheck,
-  Zap
+  Zap,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, CreditTransaction } from '../types';
 
 export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStudio }) => {
   const { user, credits, updateUserProfile } = useAuth();
+  const { openSongDetails } = usePlayer();
   const [jobs, setJobs] = useState<GenerationJob[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -571,7 +574,17 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
                 {jobs.slice(0, 10).map(j => (
                   <tr key={j.id} className="hover:bg-zinc-800/30 transition">
                     <td className="py-3 font-semibold text-white truncate max-w-[200px]">
-                      {j.title}
+                      <button
+                        type="button"
+                        onClick={() => openSongDetails(null, j)}
+                        className="group/d text-left flex items-center gap-1.5 hover:text-amber-400 min-w-0 max-w-full"
+                        title="Klik untuk melihat Style dan Lirik lagu ini"
+                      >
+                        <span className="truncate underline decoration-dotted decoration-zinc-600 group-hover/d:decoration-amber-400">
+                          {j.title}
+                        </span>
+                        <FileText className="w-3 h-3 text-zinc-500 group-hover/d:text-amber-400 flex-shrink-0 transition" />
+                      </button>
                     </td>
                     <td className="py-3 font-mono text-amber-300">
                       {j.model}

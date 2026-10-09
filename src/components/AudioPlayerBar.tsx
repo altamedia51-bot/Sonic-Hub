@@ -9,7 +9,8 @@ import {
   RotateCcw, 
   RotateCw,
   ExternalLink,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { downloadAudioFile } from '../utils/download';
@@ -27,7 +28,8 @@ export const AudioPlayerBar: React.FC = () => {
     seek, 
     setVolume, 
     formatTime,
-    closePlayer
+    closePlayer,
+    openSongDetails
   } = usePlayer();
 
   if (!currentTrack) {
@@ -48,31 +50,51 @@ export const AudioPlayerBar: React.FC = () => {
         
         {/* Track Info & Artwork */}
         <div className="flex items-center gap-3 w-full md:w-1/4 min-w-0">
-          <div className="w-12 h-12 rounded-lg bg-zinc-800 overflow-hidden flex-shrink-0 border border-zinc-700 relative group">
+          <div 
+            onClick={() => openSongDetails(currentTrack, currentJob)}
+            className="w-12 h-12 rounded-lg bg-zinc-800 overflow-hidden flex-shrink-0 border border-zinc-700 relative group cursor-pointer"
+            title="Klik untuk melihat Style dan Lirik"
+          >
             {currentTrack.imageUrl ? (
               <img 
                 src={currentTrack.imageUrl} 
                 alt={currentTrack.title} 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-amber-600 to-rose-700">
                 <Disc className="w-6 h-6 text-white animate-spin-slow" />
               </div>
             )}
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition">
+              <FileText className="w-4 h-4 text-amber-300" />
+            </div>
           </div>
 
           <div className="min-w-0 flex-1">
-            <h4 className="text-sm font-semibold text-white truncate">
-              {currentTrack.title || currentJob?.title || 'Generated Audio Track'}
-            </h4>
-            <div className="flex items-center gap-2 text-xs text-zinc-400">
-              <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-[10px] font-mono text-amber-300">
+            <button
+              type="button"
+              onClick={() => openSongDetails(currentTrack, currentJob)}
+              className="text-left group/t flex items-center gap-1.5 min-w-0 max-w-full hover:text-amber-400 transition"
+              title="Klik untuk melihat Style dan Lirik lagu ini"
+            >
+              <h4 className="text-sm font-semibold text-white group-hover/t:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/t:decoration-amber-400 transition">
+                {currentTrack.title || currentJob?.title || 'Generated Audio Track'}
+              </h4>
+              <FileText className="w-3.5 h-3.5 text-zinc-500 group-hover/t:text-amber-400 flex-shrink-0 transition" />
+            </button>
+            <div className="flex items-center gap-2 text-xs text-zinc-400 mt-0.5">
+              <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-[10px] font-mono text-amber-300 flex-shrink-0">
                 {currentTrack.modelName || currentJob?.model || 'V6'}
               </span>
-              <span className="truncate max-w-[140px] text-[11px] text-zinc-400">
+              <button
+                type="button"
+                onClick={() => openSongDetails(currentTrack, currentJob)}
+                className="truncate max-w-[140px] text-[11px] text-zinc-400 hover:text-zinc-200 text-left transition"
+                title="Lihat Style & Lirik"
+              >
                 {currentTrack.tags || currentJob?.style || 'Real Suno Generation'}
-              </span>
+              </button>
             </div>
           </div>
         </div>

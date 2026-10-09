@@ -5,6 +5,7 @@ import { Navbar } from './components/Navbar';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { AuthModal } from './components/AuthModal';
+import { SongDetailsModal } from './components/SongDetailsModal';
 import { StudioPage } from './pages/StudioPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -76,6 +77,11 @@ function AppContent() {
       <AuthModal 
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)} 
+      />
+
+      {/* Song Details Modal (Style & Lyrics Viewer) */}
+      <SongDetailsModal 
+        onApplyToStudio={() => setCurrentTab('studio')}
       />
 
     </div>

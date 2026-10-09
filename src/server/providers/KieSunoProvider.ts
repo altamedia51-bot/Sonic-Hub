@@ -248,6 +248,7 @@ export class KieSunoProvider implements MusicProvider {
             imageUrl: item?.image_url || item?.imageUrl || item?.image_large_url || item?.cover_url,
             title: item?.title || item?.name,
             tags: item?.tags || item?.style,
+            prompt: item?.prompt || item?.text || item?.lyrics,
             duration: item?.duration,
             modelName: item?.model_name || item?.model
           });

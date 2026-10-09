@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useRef, useEffect } from 'r
 import { GenerationTrack, GenerationJob } from '../types';
 import { resolvePlayableAudioUrl } from '../utils/audioUrl';
 
+interface SongDetailsTarget {
+  track?: GenerationTrack | null;
+  job?: GenerationJob | null;
+}
+
 interface PlayerContextType {
   currentTrack: GenerationTrack | null;
   currentJob: GenerationJob | null;
@@ -16,6 +21,10 @@ interface PlayerContextType {
   setVolume: (vol: number) => void;
   formatTime: (seconds: number) => string;
   closePlayer: () => void;
+  songDetails: SongDetailsTarget | null;
+  isSongDetailsOpen: boolean;
+  openSongDetails: (track?: GenerationTrack | null, job?: GenerationJob | null) => void;
+  closeSongDetails: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -150,6 +159,18 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const [songDetails, setSongDetails] = useState<SongDetailsTarget | null>(null);
+  const [isSongDetailsOpen, setIsSongDetailsOpen] = useState<boolean>(false);
+
+  const openSongDetails = (track?: GenerationTrack | null, job?: GenerationJob | null) => {
+    setSongDetails({ track: track || null, job: job || null });
+    setIsSongDetailsOpen(true);
+  };
+
+  const closeSongDetails = () => {
+    setIsSongDetailsOpen(false);
+  };
+
   const closePlayer = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -176,7 +197,11 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       seek,
       setVolume,
       formatTime,
-      closePlayer
+      closePlayer,
+      songDetails,
+      isSongDetailsOpen,
+      openSongDetails,
+      closeSongDetails
     }}>
       {children}
     </PlayerContext.Provider>

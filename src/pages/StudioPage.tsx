@@ -19,7 +19,8 @@ import {
   Zap,
   Key,
   Trash2,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
@@ -35,7 +36,26 @@ interface StudioPageProps {
 
 export const StudioPage: React.FC<StudioPageProps> = ({ onGoToAdmin }) => {
   const { user, isAdmin, credits, refreshUser } = useAuth();
-  const { playTrack, currentTrack, isPlaying } = usePlayer();
+  const { playTrack, currentTrack, isPlaying, openSongDetails } = usePlayer();
+
+  // Listen to load_song_to_studio event from details modal
+  useEffect(() => {
+    const handleLoadSong = (e: any) => {
+      const detail = e.detail;
+      if (!detail) return;
+      if (detail.title) setTitle(detail.title);
+      if (detail.style) setStyle(detail.style);
+      if (typeof detail.lyrics === 'string') setLyrics(detail.lyrics);
+      if (typeof detail.instrumental === 'boolean') setInstrumental(detail.instrumental);
+      if (detail.model) setModel(detail.model);
+      if (detail.negativeTags) setNegativeTags(detail.negativeTags);
+      if (detail.vocalGender) setVocalGender(detail.vocalGender);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.addEventListener('load_song_to_studio', handleLoadSong);
+    return () => window.removeEventListener('load_song_to_studio', handleLoadSong);
+  }, []);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -702,7 +722,20 @@ Fading into the midnight hum...`);
                   </span>
                 )}
               </div>
-              <h3 className="text-base sm:text-lg font-bold text-white mt-1 truncate">{activeJob.title}</h3>
+              <button
+                type="button"
+                onClick={() => openSongDetails(activeTracks[0] || null, activeJob)}
+                className="group text-left flex items-center gap-2 hover:text-amber-400 transition mt-1 max-w-full"
+                title="Klik untuk melihat Style dan Lirik lagu ini"
+              >
+                <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover:decoration-amber-400 transition">
+                  {activeJob.title}
+                </h3>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-300 font-medium opacity-80 group-hover:opacity-100 flex-shrink-0 transition">
+                  <FileText className="w-3 h-3 text-amber-400" />
+                  Lihat Style & Lirik
+                </span>
+              </button>
             </div>
 
             {/* Genuine State Badge */}
@@ -777,31 +810,27 @@ Fading into the midnight hum...`);
             <div className="py-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                 <div className={`p-2 rounded-lg border ${
-                  activeJob.status === 'QUEUED' || activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                  activeJob.status === 'QUEUED' || activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING'
                     ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
                     : 'bg-zinc-950 border-zinc-800 text-zinc-500'
                 }`}>
                   1. Job Queued
                 </div>
                 <div className={`p-2 rounded-lg border ${
-                  activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                  activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING'
                     ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
                     : 'bg-zinc-950 border-zinc-800 text-zinc-500'
                 }`}>
                   2. Submitting to Engine
                 </div>
                 <div className={`p-2 rounded-lg border ${
-                  activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                  activeJob.status === 'PROCESSING'
                     ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
                     : 'bg-zinc-950 border-zinc-800 text-zinc-500'
                 }`}>
                   3. Suno Neural Synthesis
                 </div>
-                <div className={`p-2 rounded-lg border ${
-                  activeJob.status === 'COMPLETED'
-                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 font-bold'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-                }`}>
+                <div className="p-2 rounded-lg border bg-zinc-950 border-zinc-800 text-zinc-500">
                   4. Callback Completed
                 </div>
               </div>
@@ -865,10 +894,18 @@ Fading into the midnight hum...`);
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white truncate">
-                            {trk.title || `Variation ${idx + 1}`}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-mono">
+                          <button
+                            type="button"
+                            onClick={() => openSongDetails(trk, activeJob)}
+                            className="group/t text-left flex items-center gap-1 min-w-0 hover:text-amber-400 transition"
+                            title="Klik untuk melihat Style dan Lirik versi ini"
+                          >
+                            <span className="text-xs font-bold text-white group-hover/t:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/t:decoration-amber-400 transition">
+                              {trk.title || `Variation ${idx + 1}`}
+                            </span>
+                            <FileText className="w-3 h-3 text-zinc-500 group-hover/t:text-amber-400 flex-shrink-0 transition" />
+                          </button>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-mono flex-shrink-0">
                             Ver {idx + 1}
                           </span>
                         </div>

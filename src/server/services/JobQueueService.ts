@@ -291,7 +291,7 @@ export class JobQueueService {
                   audioUrl: t.audioUrl,
                   streamAudioUrl: t.streamAudioUrl || t.audioUrl,
                   imageUrl: t.imageUrl,
-                  prompt: t.prompt,
+                  prompt: t.prompt || job.lyrics,
                   modelName: t.modelName || job.model,
                   title: t.title || job.title,
                   tags: t.tags || job.style,

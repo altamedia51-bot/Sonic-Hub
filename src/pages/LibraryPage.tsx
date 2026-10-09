@@ -12,7 +12,8 @@ import {
   ExternalLink,
   RefreshCw,
   Flame,
-  Loader2
+  Loader2,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
@@ -28,7 +29,7 @@ interface LibraryItem {
 
 export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStudio }) => {
   const { user } = useAuth();
-  const { playTrack, currentTrack, isPlaying } = usePlayer();
+  const { playTrack, currentTrack, isPlaying, openSongDetails } = usePlayer();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [activeJobs, setActiveJobs] = useState<GenerationJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,7 +262,17 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
               <div key={j.id} className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-white truncate">{j.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => openSongDetails(null, j)}
+                      className="group/t text-left flex items-center gap-1 hover:text-amber-400 min-w-0"
+                      title="Klik untuk melihat Style dan Lirik lagu ini"
+                    >
+                      <span className="text-xs font-bold text-white group-hover/t:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/t:decoration-amber-400 transition">
+                        {j.title}
+                      </span>
+                      <FileText className="w-3 h-3 text-zinc-500 group-hover/t:text-amber-400 flex-shrink-0 transition" />
+                    </button>
                     <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 font-mono text-[10px]">
                       {j.model}
                     </span>
@@ -390,8 +401,22 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                 {/* Content */}
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                   <div>
-                    <h3 className="text-sm font-bold text-white truncate">{job.title}</h3>
-                    <p className="text-xs text-zinc-400 line-clamp-2 mt-1 font-sans">
+                    <button
+                      type="button"
+                      onClick={() => openSongDetails(tracks[0] || null, job)}
+                      className="group/j text-left flex items-center gap-1.5 hover:text-amber-400 min-w-0 max-w-full"
+                      title="Klik untuk melihat Style dan Lirik lagu ini"
+                    >
+                      <h3 className="text-sm font-bold text-white group-hover/j:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/j:decoration-amber-400 transition">
+                        {job.title}
+                      </h3>
+                      <FileText className="w-3.5 h-3.5 text-zinc-500 group-hover/j:text-amber-400 flex-shrink-0 transition" />
+                    </button>
+                    <p 
+                      onClick={() => openSongDetails(tracks[0] || null, job)}
+                      className="text-xs text-zinc-400 line-clamp-2 mt-1 font-sans cursor-pointer hover:text-zinc-200 transition"
+                      title="Klik untuk melihat Style dan Lirik lengkap"
+                    >
                       {job.style}
                     </p>
                   </div>
@@ -419,9 +444,15 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                               <Play className="w-3.5 h-3.5" />
                             )}
                           </button>
-                          <span className="truncate text-[11px]">
-                            {t.title || `Version ${idx + 1}`}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openSongDetails(t, job)}
+                            className="text-left group/t truncate text-[11px] text-zinc-300 hover:text-amber-300 flex items-center gap-1 transition"
+                            title="Klik untuk melihat Style dan Lirik versi ini"
+                          >
+                            <span className="truncate group-hover/t:underline">{t.title || `Version ${idx + 1}`}</span>
+                            <FileText className="w-2.5 h-2.5 text-zinc-500 group-hover/t:text-amber-400 flex-shrink-0" />
+                          </button>
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-shrink-0">

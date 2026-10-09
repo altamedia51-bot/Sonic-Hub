@@ -16,9 +16,11 @@ import {
   Sliders, 
   Lock,
   ExternalLink,
-  RotateCcw
+  RotateCcw,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePlayer } from '../context/PlayerContext';
 import { KieAccount, User, GenerationJob, SystemLog, AppSettings } from '../types';
 import { db } from '../firebase/config';
 import { 
@@ -49,6 +51,7 @@ const defaultPlatformSettings: AppSettings = {
 
 export const AdminPage: React.FC = () => {
   const { user, isAdmin, refreshUser } = useAuth();
+  const { openSongDetails } = usePlayer();
   const [subTab, setSubTab] = useState<'accounts' | 'users' | 'generations' | 'logs' | 'settings'>('accounts');
 
   // Stats
@@ -1061,7 +1064,19 @@ export const AdminPage: React.FC = () => {
                   <tr key={j.id} className="hover:bg-zinc-800/30 transition">
                     <td className="py-3 font-mono text-zinc-400 text-[11px]">{j.id}</td>
                     <td className="py-3 text-zinc-300 truncate max-w-[140px]">{j.userEmail || j.userId}</td>
-                    <td className="py-3 font-semibold text-white truncate max-w-[160px]">{j.title}</td>
+                    <td className="py-3 font-semibold text-white truncate max-w-[160px]">
+                      <button
+                        type="button"
+                        onClick={() => openSongDetails(null, j)}
+                        className="group/a text-left flex items-center gap-1.5 hover:text-amber-400 min-w-0 max-w-full"
+                        title="Klik untuk melihat Style dan Lirik lagu ini"
+                      >
+                        <span className="truncate underline decoration-dotted decoration-zinc-600 group-hover/a:decoration-amber-400">
+                          {j.title}
+                        </span>
+                        <FileText className="w-3 h-3 text-zinc-500 group-hover/a:text-amber-400 flex-shrink-0 transition" />
+                      </button>
+                    </td>
                     <td className="py-3 font-mono text-amber-300">{j.model}</td>
                     <td className="py-3 text-zinc-400 text-[11px]">{j.providerAccountName || 'Auto Router'}</td>
                     <td className="py-3">
