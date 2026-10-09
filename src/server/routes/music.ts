@@ -122,7 +122,7 @@ musicRouter.post('/create', async (req: Request, res: Response) => {
     }
 
     const KIE_DURATION_SUPPORTED_MODELS = new Set(['V5_5', 'V6', 'V6_WILD', 'V6_MINI']);
-    const sanitizedDuration = (KIE_DURATION_SUPPORTED_MODELS.has(model) && customMode) ? duration : undefined;
+    const sanitizedDuration = (KIE_DURATION_SUPPORTED_MODELS.has(model) && customMode && typeof duration === 'number' && duration > 0) ? duration : undefined;
     const personalApiKeyHeader = (req.headers['x-personal-kie-key'] as string) || '';
     const resolvedPersonalApiKey = personalApiKeyHeader || (user.usePersonalKey ? user.personalKieApiKey : undefined);
 
@@ -227,20 +227,40 @@ musicRouter.get('/active', async (req: Request, res: Response) => {
     }
 
     const userJobs = await dbStore.getUserJobs(user.id);
-    // Find first active job, or most recent job
-    const activeJob = userJobs.find(j => j.status === 'PROCESSING' || j.status === 'SUBMITTING' || j.status === 'QUEUED') || userJobs[0];
+    const now = Date.now();
+
+    // Look for genuine running active job
+    let activeJob = userJobs.find(j => {
+      const ageMs = now - new Date(j.createdAt || 0).getTime();
+      return (j.status === 'PROCESSING' || j.status === 'SUBMITTING' || j.status === 'QUEUED') && ageMs < 20 * 60 * 1000;
+    });
 
     if (!activeJob) {
+      // If no actively running job, check if the latest job completed in the last 2 minutes
+      // (so user sees their fresh tracks right after finishing, but not old jobs forever)
+      const latestJob = userJobs[0];
+      if (latestJob && (latestJob.status === 'COMPLETED' || latestJob.status === 'PARTIAL')) {
+        const completedAgeMs = now - new Date(latestJob.completedAt || latestJob.createdAt || 0).getTime();
+        if (completedAgeMs < 2 * 60 * 1000) {
+          const tracks = await dbStore.getTracksForJob(latestJob.id);
+          return res.status(200).json({
+            success: true,
+            activeJob: latestJob,
+            tracks
+          });
+        }
+      }
       return res.status(200).json({ success: true, activeJob: null, tracks: [] });
     }
 
     // Check status if processing
     const checked = await jobQueueService.checkJobStatus(activeJob.id);
-    const tracks = await dbStore.getTracksForJob(activeJob.id);
+    const resolvedJob = checked || activeJob;
+    const tracks = await dbStore.getTracksForJob(resolvedJob.id);
 
     return res.status(200).json({
       success: true,
-      activeJob: checked || activeJob,
+      activeJob: resolvedJob,
       tracks
     });
   } catch (err: any) {

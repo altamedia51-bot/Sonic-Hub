@@ -222,8 +222,29 @@ export class JobQueueService {
     const job = await dbStore.getJob(jobId);
     if (!job) return null;
 
-    // If job is still PROCESSING, SUBMITTING, PARTIAL or has 0 tracks saved, check with KIE
+    // If job already has generated tracks in db, it is complete!
     const currentTracks = await dbStore.getTracksForJob(job.id);
+    if (currentTracks.length > 0 && (job.status === 'PROCESSING' || job.status === 'SUBMITTING' || job.status === 'PARTIAL')) {
+      await creditService.finalizeCredits(job.userId, job.id, job.creditReservation).catch(() => {});
+      return await dbStore.updateJob(job.id, {
+        status: 'COMPLETED',
+        creditFinalized: true,
+        completedAt: job.completedAt || new Date().toISOString()
+      });
+    }
+
+    // Auto-fail dead jobs older than 15 minutes with 0 tracks
+    const ageMs = Date.now() - new Date(job.createdAt || 0).getTime();
+    if (ageMs > 15 * 60 * 1000 && (job.status === 'PROCESSING' || job.status === 'SUBMITTING' || job.status === 'QUEUED') && currentTracks.length === 0) {
+      await creditService.refundCredits(job.userId, job.id, job.creditReservation, 'Generation timed out');
+      return await dbStore.updateJob(job.id, {
+        status: 'FAILED',
+        errorCode: 'TIMEOUT',
+        errorMessage: 'Generation timed out after 15 minutes.'
+      });
+    }
+
+    // If job is still PROCESSING, SUBMITTING, PARTIAL or has 0 tracks saved, check with KIE
     const needsFetch = job.taskId && (
       job.status === 'PROCESSING' || 
       job.status === 'SUBMITTING' || 

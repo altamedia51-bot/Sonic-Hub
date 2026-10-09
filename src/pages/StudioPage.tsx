@@ -68,6 +68,7 @@ Fading into the midnight hum...`);
   const [negativeTags, setNegativeTags] = useState('low quality, muddy mix, distorted vocal, excessive autotune');
   const [vocalGender, setVocalGender] = useState<'m' | 'f'>('m');
   const [duration, setDuration] = useState(180);
+  const [autoDuration, setAutoDuration] = useState(true);
 
   // System & Model Status
   const [models, setModels] = useState<ModelCapability[]>([]);
@@ -110,8 +111,17 @@ Fading into the midnight hum...`);
         setActiveJob(liveJob);
         const trSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', activeJob.id)));
         if (!trSnap.empty) {
-          setActiveTracks(trSnap.docs.map(d => ({ id: d.id, ...d.data() } as GenerationTrack)));
-          if (liveJob.status === 'COMPLETED') refreshUser();
+          const loaded = trSnap.docs.map(d => ({ id: d.id, ...d.data() } as GenerationTrack));
+          setActiveTracks(loaded);
+          if (liveJob.status !== 'COMPLETED') {
+            await updateDoc(doc(db, 'generation_jobs', activeJob.id), {
+              status: 'COMPLETED',
+              creditFinalized: true,
+              completedAt: new Date().toISOString()
+            }).catch(() => null);
+            setActiveJob(prev => prev ? { ...prev, status: 'COMPLETED' } : null);
+          }
+          refreshUser();
           setCheckingStatus(false);
           return;
         }
@@ -167,6 +177,12 @@ Fading into the midnight hum...`);
 
               if (recovered.length > 0) {
                 setActiveTracks(recovered);
+                setActiveJob(prev => prev ? { ...prev, status: 'COMPLETED' } : null);
+                await updateDoc(doc(db, 'generation_jobs', liveJob.id), {
+                  status: 'COMPLETED',
+                  creditFinalized: true,
+                  completedAt: new Date().toISOString()
+                }).catch(() => null);
                 refreshUser();
               }
             }
@@ -287,12 +303,20 @@ Fading into the midnight hum...`);
         const jobSnap = await getDoc(doc(db, 'generation_jobs', activeJob.id)).catch(() => null);
         if (jobSnap?.exists()) {
           const jData = { id: jobSnap.id, ...jobSnap.data() } as GenerationJob;
-          setActiveJob(jData);
           const tracksSnap = await getDocs(query(collection(db, 'generation_tracks'), where('jobId', '==', activeJob.id))).catch(() => null);
           if (tracksSnap && !tracksSnap.empty) {
             const trks = tracksSnap.docs.map(d => ({ id: d.id, ...d.data() } as GenerationTrack));
             setActiveTracks(trks);
+            if (jData.status !== 'COMPLETED') {
+              jData.status = 'COMPLETED';
+              await updateDoc(doc(db, 'generation_jobs', activeJob.id), {
+                status: 'COMPLETED',
+                creditFinalized: true,
+                completedAt: new Date().toISOString()
+              }).catch(() => null);
+            }
           }
+          setActiveJob(jData);
           if (jData.status === 'COMPLETED') {
             clearInterval(interval);
             refreshUser();
@@ -371,7 +395,7 @@ Fading into the midnight hum...`);
             instrumental,
             negativeTags: selectedModelCap.supportsNegativeTags ? negativeTags : undefined,
             vocalGender: selectedModelCap.supportsVocalGender && !instrumental ? vocalGender : undefined,
-            duration: isDurationSupported ? duration : undefined
+            duration: (isDurationSupported && !autoDuration) ? duration : undefined
           })
         });
 
@@ -448,7 +472,7 @@ Fading into the midnight hum...`);
         if (selectedModelCap.supportsVocalGender && !instrumental && vocalGender) {
           kiePayload.input.vocal_gender = vocalGender;
         }
-        if (isDurationSupported && duration) {
+        if (isDurationSupported && !autoDuration && duration) {
           kiePayload.input.duration = duration;
         }
 
@@ -716,69 +740,94 @@ Fading into the midnight hum...`);
             </div>
           </div>
 
-          {/* Real State Sequence Tracker (Zero Fake Percentages!) */}
-          <div className="py-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-              <div className={`p-2 rounded-lg border ${
-                activeJob.status === 'QUEUED' || activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
-                  ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-              }`}>
-                1. Job Queued
+          {/* Real State Sequence Tracker or Completion Banner */}
+          {activeJob.status === 'COMPLETED' || activeTracks.length > 0 ? (
+            <div className="py-3.5 px-4 my-2 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5 text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <div>
+                  <span className="font-bold text-emerald-200">Musik selesai dibuat!</span>
+                  <span className="text-emerald-400/80 ml-1.5">
+                    {activeTracks.length > 0 ? `${activeTracks.length} variasi audio siap diputar & diunduh di bawah.` : 'Memuat file audio...'}
+                  </span>
+                </div>
               </div>
-              <div className={`p-2 rounded-lg border ${
-                activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
-                  ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-              }`}>
-                2. Submitting to Engine
-              </div>
-              <div className={`p-2 rounded-lg border ${
-                activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
-                  ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-              }`}>
-                3. Suno Neural Synthesis
-              </div>
-              <div className={`p-2 rounded-lg border ${
-                activeJob.status === 'COMPLETED'
-                  ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 font-bold'
-                  : 'bg-zinc-950 border-zinc-800 text-zinc-500'
-              }`}>
-                4. Callback Completed
-              </div>
-            </div>
-
-            {/* Timing Guidance & Force Status Check */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
-                <span>
-                  Suno V6 neural generation typically takes <strong>60–180 seconds</strong>. Polling runs automatically in the background.
-                </span>
-              </div>
-              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={checkCurrentStatus}
-                  disabled={checkingStatus}
-                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-semibold text-xs flex items-center gap-1.5 transition"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
-                  Check Status Now
-                </button>
-                {activeJob.status === 'COMPLETED' && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {activeTracks.length === 0 && (
                   <button
                     type="button"
-                    onClick={() => { setActiveJob(null); setActiveTracks([]); }}
-                    className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs transition"
+                    onClick={checkCurrentStatus}
+                    disabled={checkingStatus}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-semibold text-xs flex items-center gap-1.5 transition"
                   >
-                    Clear Card
+                    <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                    Tampilkan Lagu
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => { setActiveJob(null); setActiveTracks([]); }}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 hover:text-white font-semibold text-xs border border-emerald-700/60 flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+                >
+                  ✕ Tutup / Buat Lagu Baru
+                </button>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="py-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                <div className={`p-2 rounded-lg border ${
+                  activeJob.status === 'QUEUED' || activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                    ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
+                }`}>
+                  1. Job Queued
+                </div>
+                <div className={`p-2 rounded-lg border ${
+                  activeJob.status === 'SUBMITTING' || activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                    ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
+                }`}>
+                  2. Submitting to Engine
+                </div>
+                <div className={`p-2 rounded-lg border ${
+                  activeJob.status === 'PROCESSING' || activeJob.status === 'COMPLETED'
+                    ? 'bg-zinc-800/80 border-amber-500/50 text-amber-300'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
+                }`}>
+                  3. Suno Neural Synthesis
+                </div>
+                <div className={`p-2 rounded-lg border ${
+                  activeJob.status === 'COMPLETED'
+                    ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 font-bold'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
+                }`}>
+                  4. Callback Completed
+                </div>
+              </div>
+
+              {/* Timing Guidance & Force Status Check */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-zinc-800/80 text-xs text-zinc-400">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span>
+                    Suno V6 neural generation typically takes <strong>60–180 seconds</strong>. Polling runs automatically in the background.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={checkCurrentStatus}
+                    disabled={checkingStatus}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-semibold text-xs flex items-center gap-1.5 transition"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                    Check Status Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Generated Tracks Results Display */}
           {activeTracks.length > 0 ? (
@@ -861,19 +910,19 @@ Fading into the midnight hum...`);
           ) : activeJob.status === 'COMPLETED' ? (
             <div className="mt-4 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-xl bg-zinc-950/60 border border-zinc-800">
               <div className="flex items-center gap-3">
-                <Loader2 className="w-4 h-4 text-amber-400 animate-spin flex-shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 <span className="text-xs text-zinc-300 font-medium">
-                  Audio variations generated successfully! Finalizing download links...
+                  Lagu telah selesai dibuat di server. Klik untuk memuat variasi audio.
                 </span>
               </div>
               <button
                 type="button"
                 onClick={checkCurrentStatus}
                 disabled={checkingStatus}
-                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition flex-shrink-0"
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition flex-shrink-0 shadow-sm"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
-                Show Songs Now
+                {checkingStatus ? 'Memuat Lagu...' : 'Tampilkan Lagu'}
               </button>
             </div>
           ) : null}
@@ -1046,31 +1095,86 @@ Fading into the midnight hum...`);
                 </div>
               )}
 
-              {/* Target Duration Slider */}
+              {/* Target Duration Selector & Slider */}
               {selectedModelCap.supportsDuration && customMode && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
                       Target Duration
                     </label>
-                    <span className="text-xs font-mono font-bold text-amber-300">
-                      {duration}s
-                    </span>
+                    <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded-lg border border-zinc-800 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setAutoDuration(true)}
+                        className={`px-2.5 py-1 rounded-md font-medium transition ${
+                          autoDuration 
+                            ? 'bg-amber-500 text-black font-bold shadow-sm' 
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Otomatis
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAutoDuration(false)}
+                        className={`px-2.5 py-1 rounded-md font-medium transition ${
+                          !autoDuration 
+                            ? 'bg-amber-500 text-black font-bold shadow-sm' 
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        Kustom ({duration}s)
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={selectedModelCap.minDuration || 10}
-                    max={selectedModelCap.maxDuration || 360}
-                    step={5}
-                    value={duration}
-                    onChange={(e) => setDuration(parseInt(e.target.value, 10))}
-                    className="w-full h-1.5 bg-zinc-950 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                  />
-                  <div className="flex justify-between text-[10px] text-zinc-500 mt-1 font-mono">
-                    <span>{selectedModelCap.minDuration}s</span>
-                    <span>{selectedModelCap.maxDuration}s</span>
-                  </div>
+
+                  {autoDuration ? (
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/60 text-[11px] text-zinc-400">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-zinc-200">Mode Otomatis Aktif:</span> Suno AI akan menentukan durasi lagu secara alami mengikuti struktur lirik, tempo, dan aransemen musik tanpa dipotong paksa.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-zinc-400">Target Panjang Lagu:</span>
+                        <span className="text-xs font-mono font-bold text-amber-300">
+                          {duration}s ({Math.floor(duration / 60)}m {duration % 60 > 0 ? `${duration % 60}s` : ''})
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={selectedModelCap.minDuration || 10}
+                        max={selectedModelCap.maxDuration || 360}
+                        step={5}
+                        value={duration}
+                        onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+                        className="w-full h-1.5 bg-zinc-900 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                      />
+                      <div className="flex justify-between items-center text-[10px] text-zinc-500 font-mono">
+                        <span>Min {selectedModelCap.minDuration}s</span>
+                        <div className="flex gap-1.5">
+                          {[60, 120, 180, 240, 360].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setDuration(preset)}
+                              className={`px-1.5 py-0.5 rounded border transition ${
+                                duration === preset 
+                                  ? 'border-amber-500/80 bg-amber-500/10 text-amber-300 font-bold' 
+                                  : 'border-zinc-800 hover:border-zinc-700 text-zinc-400'
+                              }`}
+                            >
+                              {preset}s
+                            </button>
+                          ))}
+                        </div>
+                        <span>Max {selectedModelCap.maxDuration}s</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1169,38 +1273,43 @@ Fading into the midnight hum...`);
             )}
 
             {/* Submit / Generate Button */}
-            <button
-              type="button"
-              disabled={submitting || (activeJob !== null && (activeJob.status === 'PROCESSING' || activeJob.status === 'SUBMITTING'))}
-              onClick={handleGenerate}
-              className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-xl transition-all flex items-center justify-center gap-2 ${
-                submitting || (activeJob && (activeJob.status === 'PROCESSING' || activeJob.status === 'SUBMITTING'))
-                  ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-amber-500 via-rose-600 to-indigo-600 hover:from-amber-400 hover:via-rose-500 hover:to-indigo-500 text-white shadow-rose-900/30 hover:scale-[1.01]'
-              }`}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  SUBMITTING GENERATION REQUEST...
-                </>
-              ) : activeJob && (activeJob.status === 'PROCESSING' || activeJob.status === 'SUBMITTING') ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  GENERATING MUSIC IN STUDIO ({activeJob.status})...
-                </>
-              ) : user?.usePersonalKey && user?.personalKieApiKey ? (
-                <>
-                  <Zap className="w-5 h-5 text-emerald-300" />
-                  🎵 GENERATE MUSIC (BYOK &bull; 0 PLATFORM CREDITS)
-                </>
-              ) : (
-                <>
-                  <Music className="w-5 h-5" />
-                  🎵 GENERATE MUSIC ({selectedModelCap.defaultCreditCost || 10} CREDITS)
-                </>
-              )}
-            </button>
+            {(() => {
+              const isGenerating = submitting || (activeJob !== null && (activeJob.status === 'PROCESSING' || activeJob.status === 'SUBMITTING') && activeTracks.length === 0);
+              return (
+                <button
+                  type="button"
+                  disabled={isGenerating}
+                  onClick={handleGenerate}
+                  className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-wider shadow-xl transition-all flex items-center justify-center gap-2 ${
+                    isGenerating
+                      ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-amber-500 via-rose-600 to-indigo-600 hover:from-amber-400 hover:via-rose-500 hover:to-indigo-500 text-white shadow-rose-900/30 hover:scale-[1.01]'
+                  }`}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      SUBMITTING GENERATION REQUEST...
+                    </>
+                  ) : isGenerating ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      GENERATING MUSIC IN STUDIO ({activeJob?.status})...
+                    </>
+                  ) : user?.usePersonalKey && user?.personalKieApiKey ? (
+                    <>
+                      <Zap className="w-5 h-5 text-emerald-300" />
+                      🎵 GENERATE MUSIC (BYOK &bull; 0 PLATFORM CREDITS)
+                    </>
+                  ) : (
+                    <>
+                      <Music className="w-5 h-5" />
+                      🎵 GENERATE MUSIC ({selectedModelCap.defaultCreditCost || 10} CREDITS)
+                    </>
+                  )}
+                </button>
+              );
+            })()}
 
             <div className="flex items-center justify-between text-[11px] text-zinc-500 px-1">
               <span>Cost: {selectedModelCap.defaultCreditCost || 10} credits reserved</span>
