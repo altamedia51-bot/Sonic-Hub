@@ -218,6 +218,72 @@ musicRouter.get('/jobs/:id/status', async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/music/jobs/:id - Delete music job and all its associated tracks
+musicRouter.delete('/jobs/:id', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const { id } = req.params;
+    const job = await dbStore.getJob(id);
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job musik tidak ditemukan' });
+    }
+
+    // Authorization check: must be owner or admin
+    if (user.role !== 'admin' && job.userId !== user.id) {
+      return res.status(403).json({ success: false, message: 'Akses ditolak: Anda tidak memiliki izin untuk menghapus musik ini' });
+    }
+
+    await dbStore.deleteJob(id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Musik dan seluruh variasinya berhasil dihapus',
+      jobId: id
+    });
+  } catch (err: any) {
+    console.error('[API /api/music/jobs/:id DELETE] Error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Gagal menghapus musik' });
+  }
+});
+
+// DELETE /api/music/tracks/:id - Delete a specific track variation
+musicRouter.delete('/tracks/:id', async (req: Request, res: Response) => {
+  try {
+    const user = await authenticateUser(req);
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
+    const { id } = req.params;
+    const track = await dbStore.getTrack(id);
+
+    if (!track) {
+      return res.status(404).json({ success: false, message: 'Track tidak ditemukan' });
+    }
+
+    // Authorization check
+    if (user.role !== 'admin' && track.userId !== user.id) {
+      return res.status(403).json({ success: false, message: 'Akses ditolak: Anda tidak memiliki izin untuk menghapus track ini' });
+    }
+
+    await dbStore.deleteTrack(id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Track berhasil dihapus',
+      trackId: id
+    });
+  } catch (err: any) {
+    console.error('[API /api/music/tracks/:id DELETE] Error:', err);
+    return res.status(500).json({ success: false, message: err.message || 'Gagal menghapus track' });
+  }
+});
+
 // GET /api/music/active
 musicRouter.get('/active', async (req: Request, res: Response) => {
   try {

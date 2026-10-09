@@ -183,6 +183,31 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setDuration(0);
   };
 
+  // Listen to music_deleted event to stop playback & close details if the deleted item was active
+  useEffect(() => {
+    const handleMusicDeleted = (e: any) => {
+      const { jobId, trackId } = e.detail || {};
+      if (jobId) {
+        if (currentJob?.id === jobId || currentTrack?.jobId === jobId) {
+          closePlayer();
+        }
+        if (songDetails?.job?.id === jobId || songDetails?.track?.jobId === jobId) {
+          closeSongDetails();
+        }
+      }
+      if (trackId) {
+        if (currentTrack?.id === trackId) {
+          closePlayer();
+        }
+        if (songDetails?.track?.id === trackId) {
+          closeSongDetails();
+        }
+      }
+    };
+    window.addEventListener('music_deleted', handleMusicDeleted);
+    return () => window.removeEventListener('music_deleted', handleMusicDeleted);
+  }, [currentTrack, currentJob, songDetails]);
+
   return (
     <PlayerContext.Provider value={{
       currentTrack,

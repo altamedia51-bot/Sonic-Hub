@@ -17,8 +17,11 @@ import {
   Mic2,
   Clock,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Trash2,
+  Loader2
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
 import { GenerationJob, GenerationTrack } from '../types';
 import { db } from '../firebase/config';
@@ -48,15 +51,66 @@ export const SongDetailsModal: React.FC<SongDetailsModalProps> = ({ onApplyToStu
     isPlaying 
   } = usePlayer();
 
+  const { user } = useAuth();
   const [copiedLyrics, setCopiedLyrics] = useState(false);
   const [copiedStyle, setCopiedStyle] = useState(false);
   const [copiedTitle, setCopiedTitle] = useState(false);
   const [fetchedJob, setFetchedJob] = useState<GenerationJob | null>(null);
   const [loadingJob, setLoadingJob] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'lyrics' | 'style'>('all');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const rawTrack = songDetails?.track || null;
   const rawJob = songDetails?.job || fetchedJob;
+
+  // Reset delete confirm state when modal is reopened
+  useEffect(() => {
+    if (!isSongDetailsOpen) {
+      setShowDeleteConfirm(false);
+      setIsDeleting(false);
+    }
+  }, [isSongDetailsOpen]);
+
+  const handleDeleteSong = async () => {
+    const targetJobId = rawJob?.id || rawTrack?.jobId;
+    const targetTrackId = rawTrack?.id;
+
+    if (!targetJobId && !targetTrackId) return;
+
+    setIsDeleting(true);
+    try {
+      const endpoint = targetJobId 
+        ? `/api/music/jobs/${targetJobId}` 
+        : `/api/music/tracks/${targetTrackId}`;
+
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.id || ''}`,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || ''
+        }
+      });
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success) {
+        if (targetJobId) {
+          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: targetJobId } }));
+        } else if (targetTrackId) {
+          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: targetTrackId } }));
+        }
+        closeSongDetails();
+      } else {
+        alert(data?.message || 'Gagal menghapus musik');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan saat menghapus: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
 
   // Auto fetch job if not provided but track.jobId is available
   useEffect(() => {
@@ -370,8 +424,61 @@ export const SongDetailsModal: React.FC<SongDetailsModalProps> = ({ onApplyToStu
               <Wand2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Gunakan di</span> Studio
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 font-semibold flex items-center gap-1.5 transition text-xs"
+              title="Hapus lagu ini"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Hapus</span>
+            </button>
           </div>
         </div>
+
+        {/* Inline Delete Confirmation Banner */}
+        {showDeleteConfirm && (
+          <div className="p-3.5 bg-rose-950/70 border-b border-rose-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-fade-in">
+            <div className="flex items-center gap-2.5 text-rose-300">
+              <Trash2 className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <div>
+                <span className="font-bold text-white">Konfirmasi Hapus Musik:</span>
+                <span className="ml-1 text-rose-200">
+                  Yakin ingin menghapus lagu ini secara permanen dari akun Anda?
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSong}
+                disabled={isDeleting}
+                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold flex items-center gap-1.5 transition shadow-sm disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Ya, Hapus
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Scrollable Content Body */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 divide-y divide-zinc-800/60">

@@ -101,6 +101,79 @@ Fading into the midnight hum...`);
   const [activeTracks, setActiveTracks] = useState<GenerationTrack[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [refundNotif, setRefundNotif] = useState<string | null>(null);
+  const [isDeletingJob, setIsDeletingJob] = useState(false);
+
+  // Listen to external music deletion events
+  useEffect(() => {
+    const handleMusicDeleted = (e: any) => {
+      const { jobId, trackId } = e.detail || {};
+      if (jobId && activeJob?.id === jobId) {
+        setActiveJob(null);
+        setActiveTracks([]);
+      }
+      if (trackId) {
+        setActiveTracks(prev => prev.filter(t => t.id !== trackId));
+      }
+    };
+    window.addEventListener('music_deleted', handleMusicDeleted);
+    return () => window.removeEventListener('music_deleted', handleMusicDeleted);
+  }, [activeJob]);
+
+  const handleDeleteJob = async (jobId: string, jobTitle: string) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus lagu "${jobTitle}" beserta variasinya? Tindakan ini permanen.`)) {
+      return;
+    }
+    setIsDeletingJob(true);
+    try {
+      const res = await fetch(`/api/music/jobs/${jobId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.id || ''}`,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || ''
+        }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        if (activeJob?.id === jobId) {
+          setActiveJob(null);
+          setActiveTracks([]);
+        }
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
+      } else {
+        alert(data?.message || 'Gagal menghapus lagu');
+      }
+    } catch (err: any) {
+      alert('Error saat menghapus: ' + err.message);
+    } finally {
+      setIsDeletingJob(false);
+    }
+  };
+
+  const handleDeleteTrack = async (trackId: string, trackTitle: string) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus variasi "${trackTitle}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/music/tracks/${trackId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.id || ''}`,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || ''
+        }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setActiveTracks(prev => prev.filter(t => t.id !== trackId));
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId } }));
+      } else {
+        alert(data?.message || 'Gagal menghapus variasi track');
+      }
+    } catch (err: any) {
+      alert('Error saat menghapus: ' + err.message);
+    }
+  };
 
   const checkCurrentStatus = async () => {
     if (!activeJob) return;
@@ -770,6 +843,19 @@ Fading into the midnight hum...`);
                   <AlertCircle className="w-3.5 h-3.5 text-rose-400" /> FAILED (REFUNDED)
                 </span>
               )}
+              <button
+                type="button"
+                onClick={() => handleDeleteJob(activeJob.id, activeJob.title)}
+                disabled={isDeletingJob}
+                className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition flex items-center gap-1"
+                title="Hapus proyek lagu ini"
+              >
+                {isDeletingJob ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
           </div>
 
@@ -938,6 +1024,15 @@ Fading into the midnight hum...`);
                         title="Download MP3"
                       >
                         <Download className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTrack(trk.id, trk.title || `Variasi ${idx + 1}`)}
+                        className="p-2 rounded-lg bg-zinc-800 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
+                        title="Hapus variasi ini"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

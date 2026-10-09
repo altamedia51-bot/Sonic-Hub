@@ -78,6 +78,41 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
     loadData();
   }, [user]);
 
+  // Listen to music deletion from any page or modal
+  useEffect(() => {
+    const handleMusicDeleted = (e: any) => {
+      const { jobId } = e.detail || {};
+      if (jobId) {
+        setJobs(prev => prev.filter(j => j.id !== jobId));
+      }
+    };
+    window.addEventListener('music_deleted', handleMusicDeleted);
+    return () => window.removeEventListener('music_deleted', handleMusicDeleted);
+  }, []);
+
+  const handleDeleteJob = async (jobId: string, title: string) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus lagu "${title}"?`)) return;
+    try {
+      const res = await fetch(`/api/music/jobs/${jobId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.id || ''}`,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || ''
+        }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setJobs(prev => prev.filter(j => j.id !== jobId));
+        window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId } }));
+      } else {
+        alert(data?.message || 'Gagal menghapus');
+      }
+    } catch (e: any) {
+      alert('Error saat menghapus: ' + e.message);
+    }
+  };
+
   // Test personal KIE.ai API key & fetch live credits
   const handleTestPersonalKey = async () => {
     const cleanKey = personalKey
@@ -568,6 +603,7 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
                   <th className="pb-3">Status</th>
                   <th className="pb-3">Task ID</th>
                   <th className="pb-3">Date</th>
+                  <th className="pb-3 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60 font-sans">
@@ -611,6 +647,16 @@ export const DashboardPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenSt
                     </td>
                     <td className="py-3 text-zinc-400">
                       {new Date(j.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteJob(j.id, j.title)}
+                        className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                        title="Hapus lagu ini"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))}

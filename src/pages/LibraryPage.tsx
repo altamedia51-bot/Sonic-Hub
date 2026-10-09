@@ -13,7 +13,9 @@ import {
   RefreshCw,
   Flame,
   Loader2,
-  FileText
+  FileText,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usePlayer } from '../context/PlayerContext';
@@ -36,6 +38,60 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [modelFilter, setModelFilter] = useState('ALL');
+
+  // Deletion modal state
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'job' | 'track';
+    id: string;
+    title: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteSuccessMsg, setDeleteSuccessMsg] = useState<string | null>(null);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const endpoint = deleteTarget.type === 'job' 
+        ? `/api/music/jobs/${deleteTarget.id}`
+        : `/api/music/tracks/${deleteTarget.id}`;
+
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${user?.id || ''}`,
+          'x-user-id': user?.id || '',
+          'x-user-email': user?.email || ''
+        }
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success) {
+        if (deleteTarget.type === 'job') {
+          setItems(prev => prev.filter(item => item.job.id !== deleteTarget.id));
+          setActiveJobs(prev => prev.filter(j => j.id !== deleteTarget.id));
+          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { jobId: deleteTarget.id } }));
+        } else {
+          setItems(prev => prev.map(item => ({
+            ...item,
+            tracks: item.tracks.filter(t => t.id !== deleteTarget.id)
+          })).filter(item => item.tracks.length > 0));
+          window.dispatchEvent(new CustomEvent('music_deleted', { detail: { trackId: deleteTarget.id } }));
+        }
+
+        setDeleteSuccessMsg(`"${deleteTarget.title}" berhasil dihapus.`);
+        setTimeout(() => setDeleteSuccessMsg(null), 3500);
+      } else {
+        alert(data?.message || 'Gagal menghapus musik');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan saat menghapus musik: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   const fetchLibrary = async (showLoading = true) => {
     try {
@@ -188,6 +244,25 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
     fetchLibrary();
   }, [user]);
 
+  // Listen to external music deletion events (e.g. from modal or studio)
+  useEffect(() => {
+    const handleMusicDeleted = (e: any) => {
+      const { jobId, trackId } = e.detail || {};
+      if (jobId) {
+        setItems(prev => prev.filter(item => item.job.id !== jobId));
+        setActiveJobs(prev => prev.filter(j => j.id !== jobId));
+      }
+      if (trackId) {
+        setItems(prev => prev.map(item => ({
+          ...item,
+          tracks: item.tracks.filter(t => t.id !== trackId)
+        })).filter(item => item.tracks.length > 0));
+      }
+    };
+    window.addEventListener('music_deleted', handleMusicDeleted);
+    return () => window.removeEventListener('music_deleted', handleMusicDeleted);
+  }, []);
+
   // Periodic poll if any jobs are active
   useEffect(() => {
     if (activeJobs.length === 0) return;
@@ -281,15 +356,25 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                     Task: {j.taskId || 'Dispatching'} • Started {new Date(j.createdAt).toLocaleTimeString()}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => checkSingleActiveJob(j)}
-                  disabled={checkingJobId === j.id}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-medium text-amber-300 transition flex items-center gap-1 flex-shrink-0"
-                >
-                  <RefreshCw className={`w-3 h-3 ${checkingJobId === j.id ? 'animate-spin' : ''}`} />
-                  Check
-                </button>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => checkSingleActiveJob(j)}
+                    disabled={checkingJobId === j.id}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-xs font-medium text-amber-300 transition flex items-center gap-1 flex-shrink-0"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${checkingJobId === j.id ? 'animate-spin' : ''}`} />
+                    Check
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget({ type: 'job', id: j.id, title: j.title })}
+                    className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    title="Hapus / Batalkan tugas ini"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -400,25 +485,36 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
 
                 {/* Content */}
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => openSongDetails(tracks[0] || null, job)}
+                        className="group/j text-left flex items-center gap-1.5 hover:text-amber-400 min-w-0 max-w-full"
+                        title="Klik untuk melihat Style dan Lirik lagu ini"
+                      >
+                        <h3 className="text-sm font-bold text-white group-hover/j:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/j:decoration-amber-400 transition">
+                          {job.title}
+                        </h3>
+                        <FileText className="w-3.5 h-3.5 text-zinc-500 group-hover/j:text-amber-400 flex-shrink-0 transition" />
+                      </button>
+                      <p 
+                        onClick={() => openSongDetails(tracks[0] || null, job)}
+                        className="text-xs text-zinc-400 line-clamp-2 mt-1 font-sans cursor-pointer hover:text-zinc-200 transition"
+                        title="Klik untuk melihat Style dan Lirik lengkap"
+                      >
+                        {job.style}
+                      </p>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => openSongDetails(tracks[0] || null, job)}
-                      className="group/j text-left flex items-center gap-1.5 hover:text-amber-400 min-w-0 max-w-full"
-                      title="Klik untuk melihat Style dan Lirik lagu ini"
+                      onClick={() => setDeleteTarget({ type: 'job', id: job.id, title: job.title })}
+                      className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition flex-shrink-0"
+                      title="Hapus Lagu Ini"
                     >
-                      <h3 className="text-sm font-bold text-white group-hover/j:text-amber-400 truncate underline decoration-dotted decoration-zinc-600 group-hover/j:decoration-amber-400 transition">
-                        {job.title}
-                      </h3>
-                      <FileText className="w-3.5 h-3.5 text-zinc-500 group-hover/j:text-amber-400 flex-shrink-0 transition" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
-                    <p 
-                      onClick={() => openSongDetails(tracks[0] || null, job)}
-                      className="text-xs text-zinc-400 line-clamp-2 mt-1 font-sans cursor-pointer hover:text-zinc-200 transition"
-                      title="Klik untuk melihat Style dan Lirik lengkap"
-                    >
-                      {job.style}
-                    </p>
                   </div>
 
                   {/* Track Variations list */}
@@ -469,6 +565,14 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
                           >
                             <Download className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget({ type: 'track', id: t.id, title: t.title || `Variasi ${idx + 1}` })}
+                            className="p-1 text-zinc-500 hover:text-rose-400 transition"
+                            title="Hapus variasi ini"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -486,6 +590,71 @@ export const LibraryPage: React.FC<{ onOpenStudio: () => void }> = ({ onOpenStud
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Delete Success Toast Notification */}
+      {deleteSuccessMsg && (
+        <div className="fixed bottom-24 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-950/90 border border-emerald-800 text-emerald-300 text-xs shadow-2xl backdrop-blur-md animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <span>{deleteSuccessMsg}</span>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal Dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  {deleteTarget.type === 'job' ? 'Hapus Lagu Ini?' : 'Hapus Variasi Track?'}
+                </h3>
+                <p className="text-xs text-zinc-400">Tindakan ini permanen dan tidak dapat dibatalkan</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800 text-xs text-zinc-300">
+              <p className="font-semibold text-white mb-1">{deleteTarget.title}</p>
+              <p className="text-zinc-400">
+                {deleteTarget.type === 'job' 
+                  ? 'Seluruh lagu ini beserta semua file audio variasinya akan dihapus dari library musik Anda.'
+                  : 'Variasi track audio ini akan dihapus dari proyek lagu.'}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800 transition disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1.5 transition shadow-lg shadow-rose-600/20 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Menghapus...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Ya, Hapus Musik
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

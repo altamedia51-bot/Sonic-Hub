@@ -432,6 +432,42 @@ class DatabaseStore {
     return updated;
   }
 
+  async deleteJob(id: string): Promise<boolean> {
+    this.jobs.delete(id);
+    if (this.firestoreDb) {
+      try {
+        await withTimeout(deleteDoc(doc(this.firestoreDb, 'generation_jobs', id)), 2000);
+      } catch (e) {
+        console.warn('[DB] Firestore deleteJob error:', (e as Error).message);
+      }
+    }
+
+    // Also delete all tracks for this job from memory and Firestore
+    const tracksToDelete: string[] = [];
+    for (const [trackId, t] of this.tracks.entries()) {
+      if (t.jobId === id) {
+        tracksToDelete.push(trackId);
+      }
+    }
+    for (const tid of tracksToDelete) {
+      this.tracks.delete(tid);
+    }
+
+    if (this.firestoreDb) {
+      try {
+        const q = query(collection(this.firestoreDb, 'generation_tracks'), where('jobId', '==', id));
+        const snap = await withTimeout(getDocs(q), 2000);
+        for (const d of snap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('[DB] Firestore deleteTracks for job error:', (e as Error).message);
+      }
+    }
+
+    return true;
+  }
+
   async getUserJobs(userId: string): Promise<GenerationJobDoc[]> {
     if (this.firestoreDb) {
       try {
@@ -476,6 +512,34 @@ class DatabaseStore {
       } catch (e) {}
     }
     return track;
+  }
+
+  async getTrack(trackId: string): Promise<GenerationTrackDoc | null> {
+    const mem = this.tracks.get(trackId);
+    if (mem) return mem;
+    if (this.firestoreDb) {
+      try {
+        const snap = await withTimeout(getDoc(doc(this.firestoreDb, 'generation_tracks', trackId)), 1500);
+        if (snap.exists()) {
+          const t = snap.data() as GenerationTrackDoc;
+          this.tracks.set(t.id, t);
+          return t;
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  async deleteTrack(trackId: string): Promise<boolean> {
+    this.tracks.delete(trackId);
+    if (this.firestoreDb) {
+      try {
+        await withTimeout(deleteDoc(doc(this.firestoreDb, 'generation_tracks', trackId)), 2000);
+      } catch (e) {
+        console.warn('[DB] Firestore deleteTrack error:', (e as Error).message);
+      }
+    }
+    return true;
   }
 
   async getTracksForJob(jobId: string): Promise<GenerationTrackDoc[]> {
